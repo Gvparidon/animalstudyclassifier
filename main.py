@@ -7,9 +7,9 @@ async def main():
     start_time = time.time()
 
     dois = pd.read_excel("data/publicaties.xlsx")["DOI nummer"].tolist()
-    dois = dois[:50]
+    dois = dois[:500]
 
-    classifier = AnimalStudyClassifier(max_requests_per_second=10)
+    classifier = AnimalStudyClassifier()
     results = await classifier.batch_check(dois)
 
     df_results = pd.DataFrame(list(results.items()), columns=["DOI", "Score"])

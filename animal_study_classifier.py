@@ -6,6 +6,7 @@ import asyncio
 from aiolimiter import AsyncLimiter
 from transformers import pipeline
 import torch
+import random
 
 # -------------------- Logging Setup --------------------
 logging.basicConfig(
@@ -15,7 +16,7 @@ logging.basicConfig(
 
 # -------------------- Class --------------------
 class AnimalStudyClassifier:
-    def __init__(self, max_requests_per_second: int = 5):
+    def __init__(self, max_requests_per_second: int = 2):
         # Use GPU if available
         self.device = 0 if torch.cuda.is_available() else -1
         logging.info(f"Using device: {'GPU' if self.device==0 else 'CPU'}")
@@ -40,21 +41,33 @@ class AnimalStudyClassifier:
         # Track errors
         self.errors: Dict[str, str] = {}
 
-    # -------------------- Async HTTP --------------------
-    async def fetch_json(self, session: aiohttp.ClientSession, url: str) -> Optional[dict]:
+    # -------------------- Async HTTP with retries --------------------
+    async def fetch_json(self, session: aiohttp.ClientSession, url: str, max_attempts=5, base_delay=2, timeout=60) -> Optional[dict]:
+        """
+        Fetch JSON with retries, exponential backoff, and jitter.
+        """
         async with self.limiter:
-            for attempt in range(3):
+            for attempt in range(1, max_attempts + 1):
                 try:
-                    async with session.get(url, timeout=10) as response:
-                        if response.status == 200:
-                            return await response.json()
+                    async with session.get(url, timeout=timeout) as resp:
+                        if resp.status == 200:
+                            return await resp.json()
+                        elif 500 <= resp.status < 600:
+                            raise aiohttp.ClientResponseError(
+                                resp.request_info, resp.history,
+                                status=resp.status, message="Server error"
+                            )
                         else:
-                            logging.warning(f"Request to {url} returned status {response.status}")
-                            await asyncio.sleep(1)
+                            logging.warning(f"Request to {url} returned status {resp.status}")
+                            return None
                 except Exception as e:
-                    logging.warning(f"Failed to fetch {url} (attempt {attempt+1}): {repr(e)}")
-                    await asyncio.sleep(1)
-            return None
+                    if attempt == max_attempts:
+                        logging.error(f"Failed to fetch {url} after {attempt} attempts: {e}")
+                        return None
+                    else:
+                        wait_time = base_delay * (2 ** (attempt - 1)) + random.uniform(0, 1)
+                        logging.warning(f"Failed {url} (attempt {attempt}): {e}. Retrying in {wait_time:.1f}s...")
+                        await asyncio.sleep(wait_time)
 
     async def fetch_openalex(self, session: aiohttp.ClientSession, doi: str) -> Optional[dict]:
         url = f"https://api.openalex.org/works/https://doi.org/{doi}"
@@ -63,7 +76,9 @@ class AnimalStudyClassifier:
     async def fetch_crossref(self, session: aiohttp.ClientSession, doi: str) -> Optional[dict]:
         url = f"https://api.crossref.org/works/{doi}"
         data = await self.fetch_json(session, url)
-        return data.get('message') if data else None
+        if data and "message" in data:
+            return data["message"]
+        return None
 
     # -------------------- Data Processing --------------------
     @staticmethod
@@ -78,14 +93,14 @@ class AnimalStudyClassifier:
         return " ".join(words)
 
     @staticmethod
-    def clean_abstract(abstract: str) -> str:
+    def clean_abstract(abstract: Optional[str]) -> str:
         if not abstract:
             return "No abstract available"
         return re.sub(r'</?jats:[^>]+>', '', abstract)
 
     @staticmethod
     def combine_text(title: str, abstract: str, concepts: List[dict]) -> str:
-        concepts_text = ", ".join([f"{c['display_name']} ({c['score']:.2f})" for c in concepts])
+        concepts_text = ", ".join([f"{c['display_name']} ({c.get('score', 0):.2f})" for c in concepts])
         return f"Title: {title}\nAbstract: {abstract}\nConcepts: {concepts_text}"
 
     # -------------------- Classification --------------------
@@ -105,19 +120,10 @@ class AnimalStudyClassifier:
             return self.cache[doi]
 
         try:
+            # Try OpenAlex first
             openalex_data = await self.fetch_openalex(session, doi)
-            crossref_data = None
 
-            if not openalex_data:
-                crossref_data = await self.fetch_crossref(session, doi)
-                if not crossref_data:
-                    self.cache[doi] = 0.0
-                    self.errors[doi] = "Missing OpenAlex and CrossRef data"
-                    return 0.0
-                title = crossref_data.get('title', ["No title available"])[0]
-                abstract = self.clean_abstract(crossref_data.get('abstract', None))
-                concepts = []
-            else:
+            if openalex_data:
                 if openalex_data.get('type') == 'review':
                     self.cache[doi] = 0.0
                     logging.info(f"{doi}: Excluded (review)")
@@ -125,10 +131,23 @@ class AnimalStudyClassifier:
                 title = openalex_data.get('title', "No title available")
                 abstract_index = openalex_data.get('abstract_inverted_index')
                 abstract = self.reconstruct_abstract(abstract_index)
-                if not abstract:
+                if not abstract:  # fallback to Crossref for missing abstract
                     crossref_data = await self.fetch_crossref(session, doi)
-                    abstract = self.clean_abstract(crossref_data.get('abstract', None) if crossref_data else None)
+                    abstract = self.clean_abstract(crossref_data.get('abstract') if crossref_data else None)
+                    if abstract == "No abstract available":
+                        self.errors[doi] = "No abstract available"
                 concepts = openalex_data.get('concepts', [])
+
+            else:
+                # Fallback to Crossref if OpenAlex missing
+                crossref_data = await self.fetch_crossref(session, doi)
+                if not crossref_data:
+                    self.cache[doi] = 0.0
+                    self.errors[doi] = "Missing OpenAlex and CrossRef data"
+                    return 0.0
+                title = crossref_data.get('title', ["No title available"])[0]
+                abstract = self.clean_abstract(crossref_data.get('abstract'))
+                concepts = []
 
             combined_text = self.combine_text(title, abstract, concepts)
             score = self.classify_text(combined_text)
