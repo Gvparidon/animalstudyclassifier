@@ -14,12 +14,17 @@ async def main():
 
     df_results = pd.DataFrame(list(results.items()), columns=["DOI", "Score"])
     output_file = "data/output.xlsx"
-    df_results.to_excel(output_file, index=False)
+    df_results.to_excel(output_file, index=False, sheet_name="Scores")
 
     if classifier.errors:
         df_errors = pd.DataFrame(list(classifier.errors.items()), columns=["DOI", "Error"])
         with pd.ExcelWriter(output_file, mode="a", engine="openpyxl") as writer:
             df_errors.to_excel(writer, sheet_name="Errors", index=False)
+
+    if classifier.types:
+        df_types = pd.DataFrame(list(classifier.types.items()), columns=["DOI", "Type"])
+        with pd.ExcelWriter(output_file, mode="a", engine="openpyxl") as writer:
+            df_types.to_excel(writer, sheet_name="Types", index=False)
 
     end_time = time.time()
     print(f"Total execution time: {end_time - start_time:.2f} seconds")

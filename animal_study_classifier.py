@@ -38,6 +38,8 @@ class AnimalStudyClassifier:
         self.cache: Dict[str, float] = {}
         # Rate limiter to avoid hitting API limits
         self.limiter = AsyncLimiter(max_requests_per_second, 1)
+        # Track types
+        self.types: Dict[str, str] = {}
         # Track errors
         self.errors: Dict[str, str] = {}
 
@@ -124,6 +126,7 @@ class AnimalStudyClassifier:
             openalex_data = await self.fetch_openalex(session, doi)
 
             if openalex_data:
+                self.types[doi] = openalex_data.get('type', "Unknown")
                 if openalex_data.get('type') == 'review':
                     self.cache[doi] = 0.0
                     logging.info(f"{doi}: Excluded (review)")
@@ -141,6 +144,7 @@ class AnimalStudyClassifier:
             else:
                 # Fallback to Crossref if OpenAlex missing
                 crossref_data = await self.fetch_crossref(session, doi)
+                self.types[doi] = crossref_data.get('type', "Unknown")
                 if not crossref_data:
                     self.cache[doi] = 0.0
                     self.errors[doi] = "Missing OpenAlex and CrossRef data"
