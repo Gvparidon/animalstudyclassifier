@@ -7,6 +7,13 @@ from aiolimiter import AsyncLimiter
 from transformers import pipeline
 import torch
 import random
+from bs4 import BeautifulSoup
+import ssl
+import certifi
+
+
+# -------------------- SSL Context --------------------
+ssl_context = ssl.create_default_context(cafile=certifi.where())
 
 # -------------------- Logging Setup --------------------
 logging.basicConfig(
@@ -82,6 +89,28 @@ class AnimalStudyClassifier:
             return data["message"]
         return None
 
+    async def fetch_pubmed_abstract(self, session: aiohttp.ClientSession, pmid_url: str) -> str:
+        """
+        Fetch abstract from PubMed page HTML (fallback).
+        """
+        async with self.limiter:
+            try:
+                async with session.get(pmid_url, timeout=60, ssl=ssl_context) as resp:
+                    if resp.status != 200:
+                        logging.warning(f"PubMed request failed with status {resp.status}")
+                        return "No abstract available"
+
+                    text = await resp.text()
+                    soup = BeautifulSoup(text, "html.parser")
+                    abstract_div = soup.find("div", {"id": "eng-abstract"})
+                    if abstract_div:
+                        return abstract_div.get_text(strip=True, separator=" ")
+                    else:
+                        return "No abstract available"
+            except Exception as e:
+                logging.error(f"Failed to fetch PubMed abstract from {pmid_url}: {repr(e)}")
+                return "No abstract available"
+
     # -------------------- Data Processing --------------------
     @staticmethod
     def reconstruct_abstract(inverted_index: dict) -> str:
@@ -138,7 +167,16 @@ class AnimalStudyClassifier:
                     crossref_data = await self.fetch_crossref(session, doi)
                     abstract = self.clean_abstract(crossref_data.get('abstract') if crossref_data else None)
                     if abstract == "No abstract available":
-                        self.errors[doi] = "No abstract available"
+                        try:
+                            pmid_url = openalex_data['ids'].get('pmid')
+                            if pmid_url:
+                                abstract = await self.fetch_pubmed_abstract(session, pmid_url)
+
+                        except Exception as e:
+                            logging.error(f"Failed to fetch abstract for {doi}: {repr(e)}")
+                            abstract = "No abstract available"
+                            self.errors[doi] = "Failed to fetch abstract"
+
                 concepts = openalex_data.get('concepts', [])
 
             else:

@@ -13,7 +13,7 @@ async def main():
     results = await classifier.batch_check(dois)
 
     df_results = pd.DataFrame(list(results.items()), columns=["DOI", "Score"])
-    output_file = "data/output.xlsx"
+    output_file = "data/output_test.xlsx"
     df_results.to_excel(output_file, index=False, sheet_name="Scores")
 
     if classifier.errors:
