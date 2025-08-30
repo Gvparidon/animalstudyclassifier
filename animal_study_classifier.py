@@ -48,6 +48,10 @@ class AnimalStudyClassifier:
         # Track types and their sources
         self.types: Dict[str, str] = {}
         self.type_sources: Dict[str, str] = {}
+        # Track abstracts
+        self.abstracts: Dict[str, str] = {}
+        # Track confidence scores
+        self.confidence_scores: Dict[str, float] = {}
         # Track errors
         self.errors: Dict[str, str] = {}
         
@@ -161,14 +165,17 @@ class AnimalStudyClassifier:
         return False
 
     # -------------------- Classification --------------------
-    def classify_text(self, text: str) -> float:
+    def classify_text(self, text: str) -> tuple[float, float]:
         try:
             output = self.classifier(text, self.candidate_labels)
             label_score_dict = dict(zip(output["labels"], output["scores"]))
-            return label_score_dict.get(self.target_label, 0.0)
+            target_score = label_score_dict.get(self.target_label, 0.0)
+            # Get the highest confidence score among all labels
+            max_confidence = max(output["scores"])
+            return target_score, max_confidence
         except Exception as e:
             logging.error(f"Classification failed: {repr(e)}")
-            return 0.0
+            return 0.0, 0.0
 
     # -------------------- Main DOI Function --------------------
     async def check_for_valid_animal_study(self, doi: str, session: aiohttp.ClientSession) -> float:
@@ -205,6 +212,9 @@ class AnimalStudyClassifier:
                             logging.error(f"Failed to fetch abstract for {doi}: {repr(e)}")
                             abstract = "No abstract available"
                             self.errors[doi] = "Failed to fetch abstract"
+                
+                # Store the abstract
+                self.abstracts[doi] = abstract
 
                 concepts = openalex_data.get('concepts', [])
 
@@ -227,11 +237,15 @@ class AnimalStudyClassifier:
                 title = crossref_data.get('title', ["No title available"])[0]
                 abstract = self.clean_abstract(crossref_data.get('abstract'))
                 concepts = []
+                
+                # Store the abstract
+                self.abstracts[doi] = abstract
 
             combined_text = self.combine_text(title, abstract, concepts)
-            score = self.classify_text(combined_text)
+            score, confidence = self.classify_text(combined_text)
             self.cache[doi] = score
-            logging.info(f"{doi}: Classification completed, score={score:.2f}")
+            self.confidence_scores[doi] = confidence
+            logging.info(f"{doi}: Classification completed, score={score:.2f}, confidence={confidence:.2f}")
             return score
 
         except Exception as e:

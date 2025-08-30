@@ -3,6 +3,7 @@ import pandas as pd
 from animal_study_classifier import AnimalStudyClassifier
 import time
 import random
+from datetime import datetime
 
 async def main():
     start_time = time.time()
@@ -12,23 +13,46 @@ async def main():
     dois = random.sample(all_dois, min(10, len(all_dois)))
 
     classifier = AnimalStudyClassifier()
-    results = await classifier.batch_check(dois)
+    
+    try:
+        results = await classifier.batch_check(dois)
+        print(f"Successfully processed {len(results)} papers")
+    except KeyboardInterrupt:
+        print("\nProcess interrupted! Saving partial results...")
+        results = classifier.cache  # Use cached results
+        print(f"Partial results: {len(results)} papers processed")
+    except Exception as e:
+        print(f"\nError during processing: {e}")
+        print("Saving partial results...")
+        results = classifier.cache  # Use cached results
+        print(f"Partial results: {len(results)} papers processed")
 
-    df_results = pd.DataFrame(list(results.items()), columns=["DOI", "Score"])
-    output_file = "data/output_test.xlsx"
-    df_results.to_excel(output_file, index=False, sheet_name="Scores")
-
-    if classifier.errors:
-        df_errors = pd.DataFrame(list(classifier.errors.items()), columns=["DOI", "Error"])
-        with pd.ExcelWriter(output_file, mode="a", engine="openpyxl") as writer:
-            df_errors.to_excel(writer, sheet_name="Errors", index=False)
-
-    if classifier.types:
-        df_types = pd.DataFrame(list(classifier.types.items()), columns=["DOI", "Type"])
-        # Add source information
-        df_types["Source"] = [classifier.type_sources.get(doi, "Unknown") for doi in df_types["DOI"]]
-        with pd.ExcelWriter(output_file, mode="a", engine="openpyxl") as writer:
-            df_types.to_excel(writer, sheet_name="Types", index=False)
+    # Create timestamped output filename
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_file = f"data/output_{timestamp}.xlsx"
+    
+    # Create comprehensive results DataFrame
+    results_data = []
+    for doi in dois:
+        score = results.get(doi, 0.0)
+        paper_type = classifier.types.get(doi, "Unknown")
+        type_source = classifier.type_sources.get(doi, "Unknown")
+        abstract = classifier.abstracts.get(doi, "No abstract available")
+        confidence = classifier.confidence_scores.get(doi, 0.0)
+        
+        results_data.append({
+            "DOI": doi,
+            "BART_MNLI_Score": score,
+            "BART_MNLI_Confidence": confidence,
+            "Paper_Type": paper_type,
+            "Type_Source": type_source,
+            "Abstract": abstract,
+            "Processing_Status": "Success" if doi not in classifier.errors else "Error",
+            "Error_Message": classifier.errors.get(doi, "")
+        })
+    
+    df_results = pd.DataFrame(results_data)
+    df_results.to_excel(output_file, index=False, sheet_name="Animal_Study_Classification")
 
     end_time = time.time()
     print(f"Total execution time: {end_time - start_time:.2f} seconds")
