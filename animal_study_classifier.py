@@ -45,10 +45,18 @@ class AnimalStudyClassifier:
         self.cache: Dict[str, float] = {}
         # Rate limiter to avoid hitting API limits
         self.limiter = AsyncLimiter(max_requests_per_second, 1)
-        # Track types
+        # Track types and their sources
         self.types: Dict[str, str] = {}
+        self.type_sources: Dict[str, str] = {}
         # Track errors
         self.errors: Dict[str, str] = {}
+        
+        # Types to exclude (original research filter)
+        self.excluded_types = {
+            'review', 'conference-review', 'systematic-review', 'meta-analysis',
+            'editorial', 'letter', 'commentary', 'correspondence', 'case-report',
+            'book-review', 'book-chapter', 'conference-paper', 'preprint'
+        }
 
     # -------------------- Async HTTP with retries --------------------
     async def fetch_json(self, session: aiohttp.ClientSession, url: str, max_attempts=5, base_delay=2, timeout=60) -> Optional[dict]:
@@ -134,6 +142,24 @@ class AnimalStudyClassifier:
         concepts_text = ", ".join([f"{c['display_name']} ({c.get('score', 0):.2f})" for c in concepts])
         return f"Title: {title}\nAbstract: {abstract}\nConcepts: {concepts_text}"
 
+    # -------------------- Type Filtering --------------------
+    def should_exclude_type(self, paper_type: str) -> bool:
+        """
+        Check if paper type should be excluded (not original research).
+        Uses partial matching to catch variations.
+        """
+        if not paper_type:
+            return False
+        
+        paper_type_lower = paper_type.lower().replace('-', ' ').replace('_', ' ')
+        
+        for excluded_type in self.excluded_types:
+            excluded_lower = excluded_type.lower().replace('-', ' ').replace('_', ' ')
+            if excluded_lower in paper_type_lower:
+                return True
+        
+        return False
+
     # -------------------- Classification --------------------
     def classify_text(self, text: str) -> float:
         try:
@@ -155,10 +181,13 @@ class AnimalStudyClassifier:
             openalex_data = await self.fetch_openalex(session, doi)
 
             if openalex_data:
-                self.types[doi] = openalex_data.get('type', "Unknown")
-                if openalex_data.get('type') == 'review':
+                paper_type = openalex_data.get('type', "Unknown")
+                self.types[doi] = paper_type
+                self.type_sources[doi] = "OpenAlex"
+                
+                if self.should_exclude_type(paper_type):
                     self.cache[doi] = 0.0
-                    logging.info(f"{doi}: Excluded (review)")
+                    logging.info(f"{doi}: Excluded (type: {paper_type})")
                     return 0.0
                 title = openalex_data.get('title', "No title available")
                 abstract_index = openalex_data.get('abstract_inverted_index')
@@ -182,7 +211,15 @@ class AnimalStudyClassifier:
             else:
                 # Fallback to Crossref if OpenAlex missing
                 crossref_data = await self.fetch_crossref(session, doi)
-                self.types[doi] = crossref_data.get('type', "Unknown")
+                paper_type = crossref_data.get('type', "Unknown") if crossref_data else "Unknown"
+                self.types[doi] = paper_type
+                self.type_sources[doi] = "CrossRef" if crossref_data else "Unknown"
+                
+                if self.should_exclude_type(paper_type):
+                    self.cache[doi] = 0.0
+                    logging.info(f"{doi}: Excluded (type: {paper_type})")
+                    return 0.0
+                
                 if not crossref_data:
                     self.cache[doi] = 0.0
                     self.errors[doi] = "Missing OpenAlex and CrossRef data"

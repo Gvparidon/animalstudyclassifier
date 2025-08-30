@@ -2,12 +2,14 @@ import asyncio
 import pandas as pd
 from animal_study_classifier import AnimalStudyClassifier
 import time
+import random
 
 async def main():
     start_time = time.time()
 
-    dois = pd.read_excel("data/publicaties.xlsx")["DOI nummer"].tolist()
-    dois = dois[:10]  # Limit to 10 papers for testing
+    all_dois = pd.read_excel("data/publicaties.xlsx")["DOI nummer"].tolist()
+    random.seed(42)
+    dois = random.sample(all_dois, min(10, len(all_dois)))
 
     classifier = AnimalStudyClassifier()
     results = await classifier.batch_check(dois)
@@ -23,6 +25,8 @@ async def main():
 
     if classifier.types:
         df_types = pd.DataFrame(list(classifier.types.items()), columns=["DOI", "Type"])
+        # Add source information
+        df_types["Source"] = [classifier.type_sources.get(doi, "Unknown") for doi in df_types["DOI"]]
         with pd.ExcelWriter(output_file, mode="a", engine="openpyxl") as writer:
             df_types.to_excel(writer, sheet_name="Types", index=False)
 

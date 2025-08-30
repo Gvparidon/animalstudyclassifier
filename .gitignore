@@ -159,3 +159,6 @@ temp/
 tmp/
 *.tmp
 *.temp
+
+# Analysis scripts
+check_enhanced_results.py
