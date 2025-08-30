@@ -40,6 +40,12 @@ async def main():
         abstract = classifier.abstracts.get(doi, "No abstract available")
         confidence = classifier.confidence_scores.get(doi, 0.0)
         
+        # Get in vivo analysis
+        in_vivo_analysis = classifier.in_vivo_results.get(doi, {})
+        
+        # Get ethics analysis
+        ethics_analysis = classifier.ethics_results.get(doi, {})
+        
         results_data.append({
             "DOI": doi,
             "BART_MNLI_Score": score,
@@ -47,6 +53,14 @@ async def main():
             "Paper_Type": paper_type,
             "Type_Source": type_source,
             "Abstract": abstract,
+            "Species_Detected": ", ".join(in_vivo_analysis.get("species_detected", [])),
+            "Species_Sentences": " | ".join(in_vivo_analysis.get("species_sentences", [])),
+            "In_Vivo_Keywords": ", ".join(in_vivo_analysis.get("in_vivo_keywords", [])),
+            "In_Vivo_Sentences": " | ".join(in_vivo_analysis.get("evidence_sentences", [])),
+            "Ethics_Institutions": ", ".join(ethics_analysis.get("institutions_detected", [])),
+            "Ethics_Keywords": ", ".join(ethics_analysis.get("ethics_keywords", [])),
+            "Ethics_Sentences": " | ".join(ethics_analysis.get("evidence_sentences", [])),
+            "Ethics_Sentences_Full": " | ".join(ethics_analysis.get("ethics_sentences", [])),
             "Processing_Status": "Success" if doi not in classifier.errors else "Error",
             "Error_Message": classifier.errors.get(doi, "")
         })

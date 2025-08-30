@@ -10,6 +10,8 @@ import random
 from bs4 import BeautifulSoup
 import ssl
 import certifi
+from animal_evidence_extractor import InVivoDetector
+from ethics_extractor import EthicsExtractor
 
 
 # -------------------- SSL Context --------------------
@@ -52,8 +54,18 @@ class AnimalStudyClassifier:
         self.abstracts: Dict[str, str] = {}
         # Track confidence scores
         self.confidence_scores: Dict[str, float] = {}
+        # Track in vivo analysis results
+        self.in_vivo_results: Dict[str, Dict] = {}
+        # Track ethics analysis results
+        self.ethics_results: Dict[str, Dict] = {}
         # Track errors
         self.errors: Dict[str, str] = {}
+        
+        # Initialize in vivo detector
+        self.in_vivo_detector = InVivoDetector()
+        
+        # Initialize ethics extractor
+        self.ethics_extractor = EthicsExtractor()
         
         # Types to exclude (original research filter)
         self.excluded_types = {
@@ -245,6 +257,15 @@ class AnimalStudyClassifier:
             score, confidence = self.classify_text(combined_text)
             self.cache[doi] = score
             self.confidence_scores[doi] = confidence
+            
+            # Perform in vivo analysis on full paper text
+            in_vivo_analysis = self.in_vivo_detector.process_full_paper(doi)
+            self.in_vivo_results[doi] = in_vivo_analysis
+            
+            # Perform ethics analysis on full paper text
+            ethics_analysis = self.ethics_extractor.process_full_paper(doi)
+            self.ethics_results[doi] = ethics_analysis
+            
             logging.info(f"{doi}: Classification completed, score={score:.2f}, confidence={confidence:.2f}")
             return score
 
