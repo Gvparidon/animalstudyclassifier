@@ -7,7 +7,7 @@ async def main():
     start_time = time.time()
 
     dois = pd.read_excel("data/publicaties.xlsx")["DOI nummer"].tolist()
-    dois = dois[:500]
+    dois = dois[:10]  # Limit to 10 papers for testing
 
     classifier = AnimalStudyClassifier()
     results = await classifier.batch_check(dois)
