@@ -31,22 +31,22 @@ class EthicsExtractor:
             "institutional_approval": re.compile(r"\b(institutional\s+approval|university\s+approval|faculty\s+approval|department\s+approval|institute\s+approval|center\s+approval)\b", re.I),
             
             # Guidelines and compliance
-            "guidelines": re.compile(r"\b(NIH\s+Guide|ARRIVE|3R|replacement|reduction|refinement|animal\s+welfare|welfare\s+guidelines|ethical\s+guidelines|research\s+guidelines)\b", re.I),
-            "regulations": re.compile(r"\b(regulations|regulatory\s+compliance|compliance|ethical\s+standards|standards|protocol|ethical\s+protocol|animal\s+protocol)\b", re.I),
+            "guidelines": re.compile(r"\b(NIH\s+Guide|ARRIVE|3R|replacement|animal\s+welfare)\b", re.I),
+            "regulations": re.compile(r"\b(regulations|regulatory\s+compliance|ethical\s+protocol|animal\s+protocol)\b", re.I),
             
             # Approval and consent
-            "approval": re.compile(r"\b(approved|approval|permission|authorized|authorization|consent|informed\s+consent|ethical\s+approval|ethical\s+permission)\b", re.I),
+            "approval": re.compile(r"\b(informed\s+consent|ethical\s+approval|ethical\s+permission)\b", re.I),
             
             # Declaration statements
-            "declaration": re.compile(r"\b(conducted\s+in\s+accordance|in\s+accordance\s+with|following\s+the|according\s+to|compliant\s+with|adhering\s+to|following\s+guidelines|ethical\s+principles)\b", re.I),
-            "ethical_conduct": re.compile(r"\b(ethical\s+conduct|ethical\s+standards|ethical\s+principles|ethical\s+practices|ethical\s+considerations|ethical\s+requirements)\b", re.I),
+            "declaration": re.compile(r"\b(conducted\s+in\s+accordance|in\s+accordance\s+with|following\s+guidelines)\b", re.I),
+            "ethical_conduct": re.compile(r"\b(ethical\s+conduct)\b", re.I),
             
             # Animal welfare
-            "animal_welfare": re.compile(r"\b(animal\s+welfare|welfare\s+of\s+animals|humane\s+treatment|humane\s+care|animal\s+rights|animal\s+protection|welfare\s+considerations)\b", re.I),
+            "animal_welfare": re.compile(r"\b(animal\s+welfare|humane\s+treatment|humane\s+care|animal\s+rights)\b", re.I),
             "minimize_suffering": re.compile(r"\b(minimize\s+suffering|reduce\s+pain|alleviate\s+distress|prevent\s+suffering|minimize\s+stress|reduce\s+discomfort|humane\s+endpoints)\b", re.I),
             
             # Institutions
-            "institution_mention": re.compile(r"\b(university|institute|center|faculty|department|school|college|hospital|medical\s+center|research\s+center|laboratory|lab)\b", re.I),
+            "institution_mention": re.compile(r"\b(university|institute|center|faculty|department|school|college|hospital|medical\s+center|research\s+center|laboratory|lab|animal\s+facility|central\s+animal\s+laboratory|CDL|vivarium|animal\s+research\s+facility)\b", re.I),
         }
         
         # Context patterns for sentence extraction

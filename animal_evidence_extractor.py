@@ -72,37 +72,37 @@ class InVivoDetector:
             "behavioral_tests": re.compile(r"\b(Morris\s+water\s+maze|open\s+field|elevated\s+plus\s+maze|rotarod|T\s?maze|radial\s+arm\s+maze|novel\s+object\s+recognition|fear\s+conditioning|passive\s+avoidance|active\s+avoidance|social\s+interaction|prepulse\s+inhibition|startle\s+response|grip\s+strength|balance\s+beam|wire\s+hanging)\b", re.I),
             
             # Physiological measurements
-            "physiological": re.compile(r"\b(blood\s+pressure|heart\s+rate|respiratory\s+rate|body\s+temperature|weight\s+gain|weight\s+loss|food\s+intake|water\s+intake|urine\s+output|fecal\s+output|glucose\s+level|insulin\s+level|cholesterol|triglycerides|cytokines|inflammatory\s+markers)\s+(measurement|monitoring|assessment|analysis)\b", re.I),
+            "physiological": re.compile(r"\b(body\s+weight|weight\s+gain|weight\s+loss|food\s+intake|water\s+intake|organ\s+weight|tissue\s+weight)\b", re.I),
             
             # Sampling procedures
             "sampling": re.compile(r"\b(cerebrospinal\s+fluid|CSF|blood\s+collection|tail\s+vein|cardiac\s+puncture|orbital\s+bleeding|jugular\s+vein|carotid\s+artery|femoral\s+vein|saphenous\s+vein|urine\s+collection|fecal\s+collection|tissue\s+biopsy|organ\s+removal|brain\s+extraction|liver\s+extraction|kidney\s+extraction|spleen\s+extraction|lung\s+extraction|heart\s+extraction)\b", re.I),
             
             # Animal husbandry
-            "husbandry": re.compile(r"\b(housed|housing|cage|caging|temperature[-\s]controlled|humidity[-\s]controlled|12[-\s]?h\s+light|12[-\s]?h\s+dark|light[-\s]cycle|dark[-\s]cycle|diet|feeding|water|bedding|enrichment|social\s+isolation|group\s+housed|single\s+housed|pair\s+housed)\b", re.I),
+            "husbandry": re.compile(r"\b(animal\s+facility|vivarium|housed|housing|cage|caging|12[-\s]?h\s+light|12[-\s]?h\s+dark|light[-\s]cycle|dark[-\s]cycle|group\s+housed|single\s+housed|pair\s+housed)\b", re.I),
             
             # Ethics and regulations
-            "ethics": re.compile(r"\b(IACUC|ARRIVE|Institutional\s+Animal\s+Care|ethics\s+committee|animal\s+care\s+and\s+use|animal\s+welfare|3R|replacement|reduction|refinement|animal\s+protocol|animal\s+approval|ethical\s+approval|regulatory\s+compliance)\b", re.I),
+            "ethics": re.compile(r"\b(IACUC|ARRIVE|Institutional\s+Animal\s+Care|ethics\s+committee|animal\s+care\s+and\s+use|animal\s+welfare|3R|replacement|animal\s+protocol|animal\s+approval|ethical\s+approval|regulatory\s+compliance)\b", re.I),
             
             # Experimental design
-            "experimental_design": re.compile(r"\b(randomized|randomization|blinded|blind|double[-\s]blind|single[-\s]blind|control\s+group|treatment\s+group|sham\s+control|vehicle\s+control|baseline|post[-\s]treatment|pre[-\s]treatment|follow[-\s]up|longitudinal|cross[-\s]sectional|cohort|intervention|manipulation)\b", re.I),
+            "experimental_design": re.compile(r"\b(randomized|randomization|control\s+group|treatment\s+group|sham\s+control|vehicle\s+control|n\s*=\s*\d+\s+animals|n\s*=\s*\d+\s+mice|n\s*=\s*\d+\s+rats)\b", re.I),
             
             # Disease models
             "disease_models": re.compile(r"\b(disease\s+model|animal\s+model|transgenic|knockout|knock[-\s]in|overexpression|mutant|mutagenesis|carcinogen|tumor\s+induction|infection\s+model|injury\s+model|trauma\s+model|stroke\s+model|diabetes\s+model|obesity\s+model|hypertension\s+model|asthma\s+model|arthritis\s+model|depression\s+model|anxiety\s+model|Alzheimer\s+model|Parkinson\s+model|Huntington\s+model|ALS\s+model)\b", re.I),
             
             # Drug administration
-            "drug_administration": re.compile(r"\b(drug\s+administration|treatment|dosing|dose|concentration|mg/kg|μg/kg|ng/kg|μmol/kg|nmol/kg|oral\s+administration|gavage|intraperitoneal\s+injection|intravenous\s+injection|subcutaneous\s+injection|intramuscular\s+injection|topical\s+application|inhalation|intranasal|intracerebral|intraventricular|chronic\s+treatment|acute\s+treatment|repeated\s+dosing|single\s+dose|multiple\s+doses)\b", re.I),
+            "drug_administration": re.compile(r"\b(drug\s+administration|dosing|mg/kg|μg/kg|ng/kg|μmol/kg|nmol/kg|oral\s+administration|gavage|intraperitoneal\s+injection|intravenous\s+injection|subcutaneous\s+injection|intramuscular\s+injection|topical\s+application|inhalation|intranasal|intracerebral|intraventricular|chronic\s+treatment|acute\s+treatment|repeated\s+dosing|single\s+dose|multiple\s+doses)\b", re.I),
             
             # Imaging and monitoring
-            "imaging": re.compile(r"\b(MRI|fMRI|PET|CT|ultrasound|X[-\s]ray|radiography|microscopy|confocal|fluorescence|bioluminescence|fluorescence\s+imaging|live\s+imaging|real[-\s]time\s+imaging|monitoring|telemetry|implanted\s+sensor|wireless\s+monitoring|video\s+tracking|movement\s+tracking|activity\s+monitoring)\b", re.I),
+            "imaging": re.compile(r"\b(in\s+vivo\s+imaging|live\s+imaging|real[-\s]time\s+imaging|telemetry|implanted\s+sensor|wireless\s+monitoring|video\s+tracking|movement\s+tracking|activity\s+monitoring|bioluminescence)\b", re.I),
             
             # Tissue analysis
-            "tissue_analysis": re.compile(r"\b(histology|histological|histopathology|immunohistochemistry|IHC|immunofluorescence|IF|Western\s+blot|PCR|qPCR|RT[-\s]PCR|RNA\s+sequencing|DNA\s+sequencing|microarray|proteomics|metabolomics|transcriptomics|genomics|ELISA|flow\s+cytometry|FACS|microscopy|electron\s+microscopy|EM|TEM|SEM)\b", re.I),
+            "tissue_analysis": re.compile(r"\b(histology|histological|histopathology|immunohistochemistry|IHC|immunofluorescence|IF|Western\s+blot|PCR|qPCR|RT[-\s]PCR|RNA\s+sequencing|DNA\s+sequencing|microarray|proteomics|metabolomics|transcriptomics|genomics|ELISA|flow\s+cytometry|FACS|electron\s+microscopy|EM|TEM|SEM)\b", re.I),
         }
         
         # Context patterns for sentence extraction
         self.context_patterns = {
             "animal_mention": re.compile(r"\b(animal|animals|rodent|rodents|mammal|mammals)\b", re.I),
-            "experiment_mention": re.compile(r"\b(experiment|experimental|study|studies|investigation|analysis)\b", re.I),
+            "experiment_mention": re.compile(r"\b(experiment|experimental|investigation)\b", re.I),
         }
     
     def extract_sentences_with_keywords(self, text: str, keywords: List[str]) -> List[str]:
