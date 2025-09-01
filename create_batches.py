@@ -15,7 +15,7 @@ class BatchCreator:
 
     def _load_prompt(self):
         with open(os.path.join(self.azure_dir, f"prompt.yaml"), "r", encoding="utf-8") as f:
-            return yaml.safe_load(f)
+            return yaml.safe_load(f)['prompt']
 
     def create_batches(self):
         prompt = self._load_prompt()
@@ -28,6 +28,7 @@ class BatchCreator:
             for i, doi in enumerate(self.data['DOI']):
 
                 full_text = scraper.get_full_text(doi)
+                
 
                 task_obj = {
                     "custom_id": f"task-{i}",
@@ -62,19 +63,15 @@ class BatchCreator:
                                             "type": "string"
                                         }
                                     },
-                                    "required": ["animal_testing", "in_vivo"],
-                                    "additionalProperties": False,
-                                    "if": {
-                                        "properties": {"animal_testing": {"const": "yes"}, "in_vivo": {"const": "yes"}}
-                                    },
-                                    "then": {
-                                        "required": ["location", "species"]
-                                    }
+                                    "required": ["animal_testing", "in_vivo", "location", "species"],
+                                    "additionalProperties": False
                                 }
                             }
                         }
                     }
                 }
+                
+
 
                 f.write(json.dumps(task_obj) + "\n")
 
@@ -88,7 +85,7 @@ if __name__ == "__main__":
     azure_dir = "azure"
     batch_size = 100
     df = pd.read_excel(input_file)
-    df = df.head(2)
+    df = df.head(1)
 
     
     batch_creator = BatchCreator(df, azure_dir, batch_size)
