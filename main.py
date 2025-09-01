@@ -4,6 +4,7 @@ from animal_study_classifier import AnimalStudyClassifier
 import time
 import random
 from datetime import datetime
+from tqdm import tqdm
 
 async def main():
     start_time = time.time()
@@ -16,16 +17,12 @@ async def main():
     
     try:
         results = await classifier.batch_check(dois)
-        print(f"Successfully processed {len(results)} papers")
     except KeyboardInterrupt:
         print("\nProcess interrupted! Saving partial results...")
         results = classifier.cache  # Use cached results
-        print(f"Partial results: {len(results)} papers processed")
     except Exception as e:
         print(f"\nError during processing: {e}")
-        print("Saving partial results...")
         results = classifier.cache  # Use cached results
-        print(f"Partial results: {len(results)} papers processed")
 
     # Create timestamped output filename
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

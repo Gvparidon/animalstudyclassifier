@@ -12,6 +12,7 @@ import ssl
 import certifi
 from animal_evidence_extractor import InVivoDetector
 from ethics_extractor import EthicsExtractor
+from tqdm.asyncio import tqdm
 
 
 # -------------------- SSL Context --------------------
@@ -190,7 +191,7 @@ class AnimalStudyClassifier:
     # -------------------- Main DOI Function --------------------
     async def check_for_valid_animal_study(self, doi: str, session: aiohttp.ClientSession) -> float:
         if doi in self.cache:
-            logging.info(f"{doi}: Returning cached result")
+            #logging.info(f"{doi}: Returning cached result")
             return self.cache[doi]
 
         try:
@@ -204,7 +205,7 @@ class AnimalStudyClassifier:
                 
                 if self.should_exclude_type(paper_type):
                     self.cache[doi] = 0.0
-                    logging.info(f"{doi}: Excluded (type: {paper_type})")
+                    #logging.info(f"{doi}: Excluded (type: {paper_type})")
                     return 0.0
                 title = openalex_data.get('title', "No title available")
                 self.titles[doi] = title
@@ -238,7 +239,7 @@ class AnimalStudyClassifier:
                 
                 if self.should_exclude_type(paper_type):
                     self.cache[doi] = 0.0
-                    logging.info(f"{doi}: Excluded (type: {paper_type})")
+                    #logging.info(f"{doi}: Excluded (type: {paper_type})")
                     return 0.0
                 
                 if not crossref_data:
@@ -265,7 +266,7 @@ class AnimalStudyClassifier:
             ethics_analysis = self.ethics_extractor.process_full_paper(doi)
             self.ethics_results[doi] = ethics_analysis
             
-            logging.info(f"{doi}: Classification completed, score={score:.2f}")
+            #logging.info(f"{doi}: Classification completed, score={score:.2f}")
             return score
 
         except Exception as e:
@@ -277,8 +278,18 @@ class AnimalStudyClassifier:
     # -------------------- Batch Processing --------------------
     async def batch_check(self, doi_list: List[str]) -> Dict[str, float]:
         async with aiohttp.ClientSession() as session:
-            tasks = [self.check_for_valid_animal_study(doi, session) for doi in doi_list]
+            # Create progress bar for batch processing
+            pbar = tqdm(total=len(doi_list), desc="Processing papers", unit="paper")
+            
+            async def process_with_progress(doi):
+                result = await self.check_for_valid_animal_study(doi, session)
+                pbar.update(1)
+                return result
+            
+            tasks = [process_with_progress(doi) for doi in doi_list]
             scores = await asyncio.gather(*tasks)
+            pbar.close()
+            
             logging.info(f"Batch processing completed: {len(doi_list)} DOIs processed")
             if self.errors:
                 logging.warning(f"Some DOIs had errors: {len(self.errors)} errors logged")

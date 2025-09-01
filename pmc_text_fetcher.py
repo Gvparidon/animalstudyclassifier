@@ -272,7 +272,7 @@ class PMCTextFetcher:
             # Combine into full text
             full_text = self.extract_full_text_from_sections(sections)
             
-            self.logger.info(f"Successfully fetched full paper text for {doi} ({len(full_text)} chars, {len(sections)} sections)")
+            #self.logger.info(f"Successfully fetched full paper text for {doi} ({len(full_text)} chars, {len(sections)} sections)")
             
             return FullPaperText(
                 doi=doi,
