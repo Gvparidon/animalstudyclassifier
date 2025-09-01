@@ -52,7 +52,6 @@ class EthicsExtractor:
         # Context patterns for sentence extraction
         self.context_patterns = {
             "ethics_section": re.compile(r"\b(ethics|ethical|welfare|approval|committee|guidelines|regulations|compliance|institutional|animal\s+care|animal\s+welfare)\b", re.I),
-            "institution_mention": re.compile(r"\b(university|institute|center|faculty|department|school|college|hospital|medical\s+center|research\s+center|laboratory|lab)\b", re.I),
         }
     
     def extract_sentences_with_keywords(self, text: str, keywords: List[str]) -> List[str]:
@@ -77,11 +76,14 @@ class EthicsExtractor:
         """Extract institution names from text"""
         institutions = []
         
-        # Look for institution patterns
+        # institution patterns for name extraction
         institution_patterns = [
             r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s+(?:University|Institute|Center|Faculty|Department|School|College|Hospital|Laboratory|Lab))\b',
             r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s+Medical\s+Center)\b',
             r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s+Research\s+Center)\b',
+            r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s+Animal\s+Facility)\b',
+            r'\b(Central\s+Animal\s+Laboratory|CDL)\b',
+            r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s+Vivarium)\b',
         ]
         
         for pattern in institution_patterns:
@@ -89,6 +91,60 @@ class EthicsExtractor:
             institutions.extend(matches)
         
         return list(set(institutions))  # Remove duplicates
+    
+    def extract_institution_sentences_with_sections(self, text: str, sections: List[SectionText] = None) -> List[str]:
+        """Extract institution sentences with section information"""
+        institution_sentences = []
+        
+        if sections:
+            for section in sections:
+                section_text = section.text
+                section_name = section.section_name
+                section_type = section.section_type
+                
+                # Only search in body and methods sections for institution mentions
+                if section_type.lower() not in ['body', 'methods', 'methodology']:
+                    continue
+                
+                sentence_endings = r'(?<=[.!?])\s+(?=[A-Z])'
+                sentences = re.split(sentence_endings, section_text)
+                
+                for sentence in sentences:
+                    sentence = sentence.strip()
+                    if len(sentence) < 5:
+                        continue
+                    sentence = re.sub(r'\s+', ' ', sentence)
+                    
+                    # Check if any institution keyword is in the sentence
+                    if self.ethics_patterns["institution_mention"].search(sentence):
+                        formatted_entry = f"[{section_type}] {sentence}"
+                        institution_sentences.append(formatted_entry)
+        else:
+            # Fallback to full text
+            sentence_endings = r'(?<=[.!?])\s+(?=[A-Z])'
+            sentences = re.split(sentence_endings, text)
+            
+            for sentence in sentences:
+                sentence = sentence.strip()
+                if len(sentence) < 5:
+                    continue
+                sentence = re.sub(r'\s+', ' ', sentence)
+                
+                # Check if any institution keyword is in the sentence
+                if self.ethics_patterns["institution_mention"].search(sentence):
+                    formatted_entry = f"[full_text] {sentence}"
+                    institution_sentences.append(formatted_entry)
+        
+        # Remove duplicates
+        seen_sentences = set()
+        unique_sentences = []
+        for item in institution_sentences:
+            sentence_key = item.lower().strip()
+            if sentence_key not in seen_sentences:
+                seen_sentences.add(sentence_key)
+                unique_sentences.append(item)
+        
+        return unique_sentences
     
     def find_matches_with_context(self, patterns: Dict[str, re.Pattern], text: str) -> Dict[str, List[str]]:
         """Find pattern matches and return matched strings"""
@@ -125,9 +181,9 @@ class EthicsExtractor:
                         continue
                     sentence = re.sub(r'\s+', ' ', sentence)
                     
-                    # Check if any ethics keyword is in the sentence
+                    # Check if any ethics keyword is in the sentence (excluding institutions)
                     for category, pattern in self.ethics_patterns.items():
-                        if pattern.search(sentence):
+                        if category != "institution_mention" and pattern.search(sentence):
                             formatted_entry = f"[{section_type}] {sentence}"
                             ethics_sentences.append(formatted_entry)
                             break
@@ -142,9 +198,9 @@ class EthicsExtractor:
                     continue
                 sentence = re.sub(r'\s+', ' ', sentence)
                 
-                # Check if any ethics keyword is in the sentence
+                # Check if any ethics keyword is in the sentence (excluding institutions)
                 for category, pattern in self.ethics_patterns.items():
-                    if pattern.search(sentence):
+                    if category != "institution_mention" and pattern.search(sentence):
                         formatted_entry = f"[full_text] {sentence}"
                         ethics_sentences.append(formatted_entry)
                         break
@@ -173,8 +229,9 @@ class EthicsExtractor:
             "summary": ""
         }
         
-        # Find ethics patterns
-        ethics_hits = self.find_matches_with_context(self.ethics_patterns, text)
+        # Find ethics patterns (excluding institutions to avoid duplication)
+        ethics_patterns_no_institutions = {k: v for k, v in self.ethics_patterns.items() if k != "institution_mention"}
+        ethics_hits = self.find_matches_with_context(ethics_patterns_no_institutions, text)
         
         evidence_categories = {}
         all_keywords = []
@@ -197,7 +254,10 @@ class EthicsExtractor:
         # Extract institutions
         institutions = self.extract_institutions(text)
         
-        # Extract ethics sentences with section information
+        # Extract institution sentences with section information
+        institution_sentences = self.extract_institution_sentences_with_sections(text, sections)
+        
+        # Extract ethics sentences with section information (excluding institutions)
         ethics_sentences_with_sections = self.extract_ethics_sentences_with_sections(text, sections)
         
         # Create summary
@@ -219,6 +279,7 @@ class EthicsExtractor:
         results.update({
             "evidence_categories": evidence_categories,
             "institutions_detected": institutions,
+            "institution_sentences": institution_sentences,
             "ethics_keywords": list(set(all_keywords)),
             "evidence_sentences": ethics_sentences_with_sections,
             "summary": summary

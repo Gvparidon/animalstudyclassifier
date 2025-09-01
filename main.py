@@ -55,6 +55,7 @@ async def main():
             "In_Vivo_Keywords": ", ".join(in_vivo_analysis.get("in_vivo_keywords", [])),
             "In_Vivo_Sentences": " | ".join(in_vivo_analysis.get("evidence_sentences", [])),
             "Ethics_Institutions": ", ".join(ethics_analysis.get("institutions_detected", [])),
+            "Ethics_Institution_Sentences": " | ".join(ethics_analysis.get("institution_sentences", [])),
             "Ethics_Keywords": ", ".join(ethics_analysis.get("ethics_keywords", [])),
             "Ethics_Sentences": " | ".join(ethics_analysis.get("evidence_sentences", [])),
             "Processing_Status": "Success" if doi not in classifier.errors else "Error",
