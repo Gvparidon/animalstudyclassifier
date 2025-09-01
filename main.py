@@ -33,6 +33,11 @@ async def main():
     for doi in dois:
         score = results.get(doi, 0.0)
         paper_type = classifier.types.get(doi, "Unknown")
+        
+        # Filter out non-original research (reviews, editorials, etc.) from final output
+        if classifier.should_exclude_type(paper_type):
+            continue
+            
         type_source = classifier.type_sources.get(doi, "Unknown")
         abstract = classifier.abstracts.get(doi, "No abstract available")
         title = classifier.titles.get(doi, "No title available")

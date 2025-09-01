@@ -204,9 +204,13 @@ class AnimalStudyClassifier:
                 self.type_sources[doi] = "OpenAlex"
                 
                 if self.should_exclude_type(paper_type):
+                    # Early exit for excluded types - avoid unnecessary API calls & processing
                     self.cache[doi] = 0.0
+                    self.titles[doi] = openalex_data.get('title', "No title available")
+                    self.abstracts[doi] = "Excluded paper type"
                     #logging.info(f"{doi}: Excluded (type: {paper_type})")
                     return 0.0
+                    
                 title = openalex_data.get('title', "No title available")
                 self.titles[doi] = title
                 abstract_index = openalex_data.get('abstract_inverted_index')
@@ -238,7 +242,13 @@ class AnimalStudyClassifier:
                 self.type_sources[doi] = "CrossRef" if crossref_data else "Unknown"
                 
                 if self.should_exclude_type(paper_type):
+                    # Early exit for excluded types - avoid unnecessary processing
                     self.cache[doi] = 0.0
+                    if crossref_data:
+                        self.titles[doi] = crossref_data.get('title', ["No title available"])[0]
+                    else:
+                        self.titles[doi] = "No title available"
+                    self.abstracts[doi] = "Excluded paper type"
                     #logging.info(f"{doi}: Excluded (type: {paper_type})")
                     return 0.0
                 
