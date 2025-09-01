@@ -139,23 +139,71 @@ class InVivoDetector:
                 hits[label] = list(set(found_str))  # Remove duplicates
         return hits
     
-    def extract_species_sentences(self, text: str) -> List[str]:
-        """Extract sentences containing species mentions"""
-        sentences = []
-        sentence_endings = r'[.!?]+'
-        text_sentences = re.split(sentence_endings, text)
+    def extract_species_sentences_with_sections(self, text: str, sections: List[SectionText] = None) -> List[Dict[str, str]]:
+        """Extract sentences containing species mentions with section information"""
+        species_sentences = []
         
-        for sentence in text_sentences:
-            sentence = sentence.strip()
-            if len(sentence) < 10:  # Skip very short sentences
-                continue
-            # Check if any species is in the sentence
-            for species_name in self.species_patterns.keys():
-                if re.search(rf'\b{re.escape(species_name)}\b', sentence, re.I):
-                    sentences.append(sentence)
-                    break
+        if sections:
+            # Process each section
+            for section in sections:
+                section_text = section.text
+                section_name = section.section_name
+                section_type = section.section_type
+                
+                # Split into sentences
+                sentence_endings = r'(?<=[.!?])\s+(?=[A-Z])'
+                sentences = re.split(sentence_endings, section_text)
+                
+                for sentence in sentences:
+                    sentence = sentence.strip()
+                    if len(sentence) < 15:
+                        continue
+                    
+                    # Normalize whitespace
+                    sentence = re.sub(r'\s+', ' ', sentence)
+                    
+                    # Check for species mentions
+                    for species_name, pattern in self.species_patterns.items():
+                        if pattern.search(sentence):
+                            species_sentences.append({
+                                'species': species_name,
+                                'sentence': sentence,
+                                'section_name': section_name,
+                                'section_type': section_type
+                            })
+        else:
+            # Fallback to full text
+            sentence_endings = r'(?<=[.!?])\s+(?=[A-Z])'
+            sentences = re.split(sentence_endings, text)
+            
+            for sentence in sentences:
+                sentence = sentence.strip()
+                if len(sentence) < 15:
+                    continue
+                
+                # Normalize whitespace
+                sentence = re.sub(r'\s+', ' ', sentence)
+                
+                # Check for species mentions
+                for species_name, pattern in self.species_patterns.items():
+                    if pattern.search(sentence):
+                        species_sentences.append({
+                            'species': species_name,
+                            'sentence': sentence,
+                            'section_name': 'full_text',
+                            'section_type': 'unknown'
+                        })
         
-        return list(set(sentences))  # Remove duplicates
+        # Remove duplicates
+        seen_sentences = set()
+        unique_sentences = []
+        for item in species_sentences:
+            sentence_key = item['sentence'].lower().strip()
+            if sentence_key not in seen_sentences:
+                seen_sentences.add(sentence_key)
+                unique_sentences.append(item)
+        
+        return unique_sentences
 
     def analyze_in_vivo_evidence(self, text: str, sections: List[SectionText] = None) -> Dict[str, any]:
         """
@@ -175,7 +223,14 @@ class InVivoDetector:
         # Find species patterns and extract sentences
         species_hits = self.find_matches_with_context(self.species_patterns, text)
         species_detected = list(species_hits.keys())
-        species_sentences = self.extract_species_sentences(text)
+        species_sentences_data = self.extract_species_sentences_with_sections(text, sections)
+        
+        # Format species sentences with section info for output
+        species_sentences = []
+        for item in species_sentences_data:
+            complete_sentence = item['sentence'].strip()
+            formatted_entry = f"[{item['section_type']}] {item['species']}: {complete_sentence}"
+            species_sentences.append(formatted_entry)
         
         # Find strain patterns
         strain_hits = self.find_matches_with_context(self.strain_patterns, text)
