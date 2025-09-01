@@ -228,6 +228,29 @@ class PMCTextFetcher:
                 texts.append(section.text)
         return " ".join(texts)
     
+    def extract_methods_text(self, sections: List[SectionText]) -> str:
+        """Return the concatenated text of all Methods-like sections."""
+        if not sections:
+            return ""
+        methods_texts: List[str] = []
+        for section in sections:
+            try:
+                section_type = (section.section_type or "").lower()
+                section_name = (section.section_name or "").lower()
+                if section_type == "methods" or re.search(r"\b(methods?|materials\s+and\s+methods?|experimental\s+procedures?)\b", section_name, re.I):
+                    if section.text:
+                        methods_texts.append(section.text)
+            except Exception:
+                continue
+        return " \n\n".join(methods_texts).strip()
+    
+    def fetch_methods_text(self, doi: str) -> str:
+        """Fetch full text for DOI and return only the Methods section text if available."""
+        paper = self.fetch_full_paper_text(doi)
+        if not paper.success:
+            return ""
+        return self.extract_methods_text(paper.sections)
+    
     def fetch_full_paper_text(self, doi: str) -> FullPaperText:
         """
         Fetch full paper text from PMC and return structured data with sections.

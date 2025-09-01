@@ -48,6 +48,9 @@ async def main():
         # Get ethics analysis
         ethics_analysis = classifier.ethics_results.get(doi, {})
         
+        # Get Methods section
+        methods_text = classifier.methods_sections.get(doi, "")
+        
         results_data.append({
             "DOI": doi,
             "Title": title,
@@ -63,6 +66,7 @@ async def main():
             "Ethics_Institution_Sentences": " | ".join(ethics_analysis.get("institution_sentences", [])),
             "Ethics_Keywords": ", ".join(ethics_analysis.get("ethics_keywords", [])),
             "Ethics_Sentences": " | ".join(ethics_analysis.get("evidence_sentences", [])),
+            "Methods_Section": methods_text,
             "Processing_Status": "Success" if doi not in classifier.errors else "Error",
             "Error_Message": classifier.errors.get(doi, "")
         })

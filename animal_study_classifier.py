@@ -12,6 +12,7 @@ import ssl
 import certifi
 from animal_evidence_extractor import InVivoDetector
 from ethics_extractor import EthicsExtractor
+from pmc_text_fetcher import PMCTextFetcher
 from tqdm.asyncio import tqdm
 
 
@@ -59,6 +60,8 @@ class AnimalStudyClassifier:
         self.in_vivo_results: Dict[str, Dict] = {}
         # Track ethics analysis results
         self.ethics_results: Dict[str, Dict] = {}
+        # Track extracted Methods sections
+        self.methods_sections: Dict[str, str] = {}
         # Track errors
         self.errors: Dict[str, str] = {}
         
@@ -67,6 +70,9 @@ class AnimalStudyClassifier:
         
         # Initialize ethics extractor
         self.ethics_extractor = EthicsExtractor()
+        
+        # Initialize PMC fetcher for methods extraction
+        self.pmc_fetcher = PMCTextFetcher(tool_name="animal_study_classifier", email="hi.hoi@mail.nl")
         
         # Types to exclude (original research filter)
         self.excluded_types = {
@@ -275,6 +281,14 @@ class AnimalStudyClassifier:
             # Perform ethics analysis on full paper text
             ethics_analysis = self.ethics_extractor.process_full_paper(doi)
             self.ethics_results[doi] = ethics_analysis
+            
+            # Extract Methods section text
+            try:
+                methods_text = self.pmc_fetcher.fetch_methods_text(doi)
+                self.methods_sections[doi] = methods_text or ""
+            except Exception as e:
+                logging.warning(f"Failed to extract Methods section for {doi}: {repr(e)}")
+                self.methods_sections[doi] = ""
             
             #logging.info(f"{doi}: Classification completed, score={score:.2f}")
             return score
