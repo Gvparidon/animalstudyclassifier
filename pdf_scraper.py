@@ -39,6 +39,22 @@ class PDFScraper:
                 "Chrome/117.0.0.0 Safari/537.36"
             )
         }
+        self.driver = self._init_driver()  
+
+    def _init_driver(self):
+        """Initialize and return a Selenium Chrome WebDriver."""
+        options = webdriver.ChromeOptions()
+        options.add_argument("--headless=new")
+        options.add_argument("--disable-logging")
+        options.add_argument("--log-level=3")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--disable-dev-shm-usage")
+
+        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+        driver.get("https://repository.ubn.ru.nl/discover")  # Load page once
+        return driver
+
 
     @staticmethod
     def extract_text_from_pdf(pdf_bytes: bytes) -> str:
@@ -65,42 +81,24 @@ class PDFScraper:
         return None
 
     def get_full_text(self, doi: str) -> Optional[str]:
-        """
-        Search the UBN repository by DOI and return cleaned PDF text.
+        """Search the UBN repository by DOI and return cleaned PDF text."""
+        driver = self.driver
+        try:
+            search_input = WebDriverWait(driver, self.wait_time).until(
+                EC.presence_of_element_located((By.ID, "aspect_discovery_SimpleSearch_field_query"))
+            )
+            search_input.clear()
+            search_input.send_keys(doi)
+            search_input.submit()
 
-        Args:
-            doi (str): DOI or search string.
+            pdf_link_element = WebDriverWait(driver, self.wait_time).until(
+                EC.presence_of_element_located((By.CLASS_NAME, "image-link"))
+            )
+            full_text_link = pdf_link_element.get_attribute("href")
 
-        Returns:
-            Optional[str]: Cleaned text from the PDF, or None if not found.
-        """
-        options = webdriver.ChromeOptions()
-        options.add_argument("--headless=new")  
-        options.add_argument("--disable-logging")
-        options.add_argument("--log-level=3")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-gpu")
-        options.add_argument("--disable-dev-shm-usage")
-
-        with webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options) as driver:
-            driver.get("https://repository.ubn.ru.nl/discover")
-
-            try:
-                search_input = WebDriverWait(driver, self.wait_time).until(
-                    EC.presence_of_element_located((By.ID, "aspect_discovery_SimpleSearch_field_query"))
-                )
-                search_input.clear()
-                search_input.send_keys(doi)
-                search_input.submit()
-
-                pdf_link_element = WebDriverWait(driver, self.wait_time).until(
-                    EC.presence_of_element_located((By.CLASS_NAME, "image-link"))
-                )
-                full_text_link = pdf_link_element.get_attribute("href")
-
-            except Exception as e:
-                logging.error(f"Error finding elements: {e}")
-                return None
+        except Exception as e:
+            logging.error(f"Error finding elements: {e}")
+            return None
 
         pdf_content = self.download_pdf_with_retries(full_text_link)
         if not pdf_content:
@@ -108,8 +106,15 @@ class PDFScraper:
         logging.info(f"Retrieved full text for: {doi}")
         return self.extract_text_from_pdf(pdf_content)
 
+    def close(self):
+        """Close the Selenium WebDriver."""
+        if self.driver:
+            self.driver.quit()
+            self.driver = None
+
 if __name__ == "__main__":
     scraper = PDFScraper()
     doi = "10.1093/BJS/ZNAE019"
     full_text = scraper.get_full_text(doi)
     print(full_text)
+    scraper.close()
