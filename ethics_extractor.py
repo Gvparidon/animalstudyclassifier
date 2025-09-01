@@ -63,7 +63,7 @@ class EthicsExtractor:
         
         for sentence in text_sentences:
             sentence = sentence.strip()
-            if len(sentence) < 10:  # Skip very short sentences
+            if len(sentence) < 5:  # Skip very short sentences
                 continue
             # Check if any keyword is in the sentence
             for keyword in keywords:
@@ -106,23 +106,59 @@ class EthicsExtractor:
                 hits[label] = list(set(found_str))  # Remove duplicates
         return hits
     
-    def extract_ethics_sentences(self, text: str) -> List[str]:
-        """Extract sentences containing ethics-related keywords"""
-        sentences = []
-        sentence_endings = r'[.!?]+'
-        text_sentences = re.split(sentence_endings, text)
+    def extract_ethics_sentences_with_sections(self, text: str, sections: List[SectionText] = None) -> List[str]:
+        """Extract ethics sentences with section information"""
+        ethics_sentences = []
         
-        for sentence in text_sentences:
-            sentence = sentence.strip()
-            if len(sentence) < 10:  # Skip very short sentences
-                continue
-            # Check if any ethics keyword is in the sentence
-            for category, pattern in self.ethics_patterns.items():
-                if pattern.search(sentence):
-                    sentences.append(sentence)
-                    break
+        if sections:
+            for section in sections:
+                section_text = section.text
+                section_name = section.section_name
+                section_type = section.section_type
+                
+                sentence_endings = r'(?<=[.!?])\s+(?=[A-Z])'
+                sentences = re.split(sentence_endings, section_text)
+                
+                for sentence in sentences:
+                    sentence = sentence.strip()
+                    if len(sentence) < 5:
+                        continue
+                    sentence = re.sub(r'\s+', ' ', sentence)
+                    
+                    # Check if any ethics keyword is in the sentence
+                    for category, pattern in self.ethics_patterns.items():
+                        if pattern.search(sentence):
+                            formatted_entry = f"[{section_type}] {sentence}"
+                            ethics_sentences.append(formatted_entry)
+                            break
+        else:
+            # Fallback to full text
+            sentence_endings = r'(?<=[.!?])\s+(?=[A-Z])'
+            sentences = re.split(sentence_endings, text)
+            
+            for sentence in sentences:
+                sentence = sentence.strip()
+                if len(sentence) < 5:
+                    continue
+                sentence = re.sub(r'\s+', ' ', sentence)
+                
+                # Check if any ethics keyword is in the sentence
+                for category, pattern in self.ethics_patterns.items():
+                    if pattern.search(sentence):
+                        formatted_entry = f"[full_text] {sentence}"
+                        ethics_sentences.append(formatted_entry)
+                        break
         
-        return list(set(sentences))  # Remove duplicates
+        # Remove duplicates
+        seen_sentences = set()
+        unique_sentences = []
+        for item in ethics_sentences:
+            sentence_key = item.lower().strip()
+            if sentence_key not in seen_sentences:
+                seen_sentences.add(sentence_key)
+                unique_sentences.append(item)
+        
+        return unique_sentences
 
     def analyze_ethics_evidence(self, text: str, sections: List[SectionText] = None) -> Dict[str, any]:
         """
@@ -161,8 +197,8 @@ class EthicsExtractor:
         # Extract institutions
         institutions = self.extract_institutions(text)
         
-        # Extract ethics sentences
-        ethics_sentences = self.extract_ethics_sentences(text)
+        # Extract ethics sentences with section information
+        ethics_sentences_with_sections = self.extract_ethics_sentences_with_sections(text, sections)
         
         # Create summary
         summary_parts = []
@@ -184,8 +220,7 @@ class EthicsExtractor:
             "evidence_categories": evidence_categories,
             "institutions_detected": institutions,
             "ethics_keywords": list(set(all_keywords)),
-            "evidence_sentences": list(set(all_sentences)),
-            "ethics_sentences": ethics_sentences,
+            "evidence_sentences": ethics_sentences_with_sections,
             "summary": summary
         })
         

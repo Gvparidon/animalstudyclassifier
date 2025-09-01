@@ -57,7 +57,6 @@ async def main():
             "Ethics_Institutions": ", ".join(ethics_analysis.get("institutions_detected", [])),
             "Ethics_Keywords": ", ".join(ethics_analysis.get("ethics_keywords", [])),
             "Ethics_Sentences": " | ".join(ethics_analysis.get("evidence_sentences", [])),
-            "Ethics_Sentences_Full": " | ".join(ethics_analysis.get("ethics_sentences", [])),
             "Processing_Status": "Success" if doi not in classifier.errors else "Error",
             "Error_Message": classifier.errors.get(doi, "")
         })
