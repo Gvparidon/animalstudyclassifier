@@ -52,8 +52,8 @@ class AnimalStudyClassifier:
         self.type_sources: Dict[str, str] = {}
         # Track abstracts
         self.abstracts: Dict[str, str] = {}
-        # Track confidence scores
-        self.confidence_scores: Dict[str, float] = {}
+        # Track titles
+        self.titles: Dict[str, str] = {}
         # Track in vivo analysis results
         self.in_vivo_results: Dict[str, Dict] = {}
         # Track ethics analysis results
@@ -177,17 +177,15 @@ class AnimalStudyClassifier:
         return False
 
     # -------------------- Classification --------------------
-    def classify_text(self, text: str) -> tuple[float, float]:
+    def classify_text(self, text: str) -> float:
         try:
             output = self.classifier(text, self.candidate_labels)
             label_score_dict = dict(zip(output["labels"], output["scores"]))
             target_score = label_score_dict.get(self.target_label, 0.0)
-            # Get the highest confidence score among all labels
-            max_confidence = max(output["scores"])
-            return target_score, max_confidence
+            return target_score
         except Exception as e:
             logging.error(f"Classification failed: {repr(e)}")
-            return 0.0, 0.0
+            return 0.0
 
     # -------------------- Main DOI Function --------------------
     async def check_for_valid_animal_study(self, doi: str, session: aiohttp.ClientSession) -> float:
@@ -209,6 +207,7 @@ class AnimalStudyClassifier:
                     logging.info(f"{doi}: Excluded (type: {paper_type})")
                     return 0.0
                 title = openalex_data.get('title', "No title available")
+                self.titles[doi] = title
                 abstract_index = openalex_data.get('abstract_inverted_index')
                 abstract = self.reconstruct_abstract(abstract_index)
                 if not abstract:  # fallback to Crossref for missing abstract
@@ -247,6 +246,7 @@ class AnimalStudyClassifier:
                     self.errors[doi] = "Missing OpenAlex and CrossRef data"
                     return 0.0
                 title = crossref_data.get('title', ["No title available"])[0]
+                self.titles[doi] = title
                 abstract = self.clean_abstract(crossref_data.get('abstract'))
                 concepts = []
                 
@@ -254,9 +254,8 @@ class AnimalStudyClassifier:
                 self.abstracts[doi] = abstract
 
             combined_text = self.combine_text(title, abstract, concepts)
-            score, confidence = self.classify_text(combined_text)
+            score = self.classify_text(combined_text)
             self.cache[doi] = score
-            self.confidence_scores[doi] = confidence
             
             # Perform in vivo analysis on full paper text
             in_vivo_analysis = self.in_vivo_detector.process_full_paper(doi)
@@ -266,7 +265,7 @@ class AnimalStudyClassifier:
             ethics_analysis = self.ethics_extractor.process_full_paper(doi)
             self.ethics_results[doi] = ethics_analysis
             
-            logging.info(f"{doi}: Classification completed, score={score:.2f}, confidence={confidence:.2f}")
+            logging.info(f"{doi}: Classification completed, score={score:.2f}")
             return score
 
         except Exception as e:

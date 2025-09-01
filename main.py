@@ -10,7 +10,7 @@ async def main():
 
     all_dois = pd.read_excel("data/publicaties.xlsx")["DOI nummer"].tolist()
     random.seed(42)
-    dois = random.sample(all_dois, min(10, len(all_dois)))
+    dois = random.sample(all_dois, min(5, len(all_dois)))
 
     classifier = AnimalStudyClassifier()
     
@@ -38,7 +38,7 @@ async def main():
         paper_type = classifier.types.get(doi, "Unknown")
         type_source = classifier.type_sources.get(doi, "Unknown")
         abstract = classifier.abstracts.get(doi, "No abstract available")
-        confidence = classifier.confidence_scores.get(doi, 0.0)
+        title = classifier.titles.get(doi, "No title available")
         
         # Get in vivo analysis
         in_vivo_analysis = classifier.in_vivo_results.get(doi, {})
@@ -48,8 +48,8 @@ async def main():
         
         results_data.append({
             "DOI": doi,
+            "Title": title,
             "BART_MNLI_Score": score,
-            "BART_MNLI_Confidence": confidence,
             "Paper_Type": paper_type,
             "Type_Source": type_source,
             "Abstract": abstract,
