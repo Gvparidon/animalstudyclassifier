@@ -248,6 +248,7 @@ class PMCTextFetcher:
         """Fetch full text for DOI and return only the Methods section text if available."""
         paper = self.fetch_full_paper_text(doi)
         if not paper.success:
+            self.logger.warning(f"Failed to fetch full paper text for {doi}: {paper.error_message}")
             return ""
         return self.extract_methods_text(paper.sections)
     
@@ -315,3 +316,9 @@ class PMCTextFetcher:
                 success=False,
                 error_message=str(e)
             )
+
+
+if __name__ == "__main__":
+    fetcher = PMCTextFetcher()
+    methods_text = fetcher.fetch_methods_text('10.4049/JIMMUNOL.2400065')
+    print(methods_text)

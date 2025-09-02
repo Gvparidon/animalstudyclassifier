@@ -14,6 +14,7 @@ from animal_evidence_extractor import InVivoDetector
 from ethics_extractor import EthicsExtractor
 from pmc_text_fetcher import PMCTextFetcher
 from tqdm.asyncio import tqdm
+from pdf_scraper import PDFScraper
 
 
 # -------------------- SSL Context --------------------
@@ -45,6 +46,9 @@ class AnimalStudyClassifier:
         ]
         self.target_label = self.candidate_labels[0]
 
+        # init scraper
+        self.scraper = PDFScraper()
+
         # Cache DOI results
         self.cache: Dict[str, float] = {}
         # Rate limiter to avoid hitting API limits
@@ -56,6 +60,8 @@ class AnimalStudyClassifier:
         self.abstracts: Dict[str, str] = {}
         # Track titles
         self.titles: Dict[str, str] = {}
+        # Track mesh terms
+        self.mesh_terms: Dict[str, bool] = {}
         # Track in vivo analysis results
         self.in_vivo_results: Dict[str, Dict] = {}
         # Track ethics analysis results
@@ -161,9 +167,9 @@ class AnimalStudyClassifier:
         return re.sub(r'</?jats:[^>]+>', '', abstract)
 
     @staticmethod
-    def combine_text(title: str, abstract: str, concepts: List[dict]) -> str:
+    def combine_text(title: str, abstract: str, concepts: List[dict], methods: str) -> str:
         concepts_text = ", ".join([f"{c['display_name']} ({c.get('score', 0):.2f})" for c in concepts])
-        return f"Title: {title}\nAbstract: {abstract}\nConcepts: {concepts_text}"
+        return f"Title: {title}\nAbstract: {abstract}\nConcepts: {concepts_text}\nMethods: {methods}"
 
     # -------------------- Type Filtering --------------------
     def should_exclude_type(self, paper_type: str) -> bool:
@@ -201,7 +207,6 @@ class AnimalStudyClassifier:
             return self.cache[doi]
 
         try:
-            # Try OpenAlex first
             openalex_data = await self.fetch_openalex(session, doi)
 
             if openalex_data:
@@ -210,30 +215,44 @@ class AnimalStudyClassifier:
                 self.type_sources[doi] = "OpenAlex"
                 
                 if self.should_exclude_type(paper_type):
-                    # Early exit for excluded types - avoid unnecessary API calls & processing
                     self.cache[doi] = 0.0
                     self.titles[doi] = openalex_data.get('title', "No title available")
                     self.abstracts[doi] = "Excluded paper type"
-                    #logging.info(f"{doi}: Excluded (type: {paper_type})")
                     return 0.0
                     
                 title = openalex_data.get('title', "No title available")
                 self.titles[doi] = title
-                abstract_index = openalex_data.get('abstract_inverted_index')
-                abstract = self.reconstruct_abstract(abstract_index)
-                if not abstract:  # fallback to Crossref for missing abstract
+
+                ## Pubmed MeSH terms is 'animal'
+                if any(d['descriptor_name'] == 'Animals' for d in openalex_data['mesh']):
+                    self.mesh_terms[doi] = True
+                else:
+                    self.mesh_terms[doi] = False
+
+                ## Get abstract
+                abstract = None
+
+                # Try PubMed
+                pmid_url = openalex_data['ids'].get('pmid')
+                if pmid_url:
+                    try:
+                        abstract = await self.fetch_pubmed_abstract(session, pmid_url)
+                    except Exception:
+                        pass
+
+                # Fallback: Crossref
+                if not abstract:
                     crossref_data = await self.fetch_crossref(session, doi)
                     abstract = self.clean_abstract(crossref_data.get('abstract') if crossref_data else None)
-                    if abstract == "No abstract available":
-                        try:
-                            pmid_url = openalex_data['ids'].get('pmid')
-                            if pmid_url:
-                                abstract = await self.fetch_pubmed_abstract(session, pmid_url)
 
-                        except Exception as e:
-                            logging.error(f"Failed to fetch abstract for {doi}: {repr(e)}")
-                            abstract = "No abstract available"
-                            self.errors[doi] = "Failed to fetch abstract"
+                # Fallback: OpenAlex inverted index
+                if not abstract:
+                    try:
+                        abstract = self.reconstruct_abstract(openalex_data.get('abstract_inverted_index'))
+                    except Exception as e:
+                        logging.error(f"Failed to fetch abstract for {doi}: {repr(e)}")
+                        abstract = "No abstract available"
+                        self.errors[doi] = "Failed to fetch abstract"
                 
                 # Store the abstract
                 self.abstracts[doi] = abstract
@@ -270,25 +289,37 @@ class AnimalStudyClassifier:
                 # Store the abstract
                 self.abstracts[doi] = abstract
 
-            combined_text = self.combine_text(title, abstract, concepts)
+            # Extract Methods section text
+            
+            methods_text = ""
+            '''
+            try:
+                methods_text = self.pmc_fetcher.fetch_methods_text(doi) or ""
+                self.methods_sections[doi] = methods_text
+            except Exception as e:
+                logging.warning("Failed to extract Methods section for %s: %r", doi, e)
+
+            # Fallback to full text if no Methods section found
+            if not methods_text.strip():
+                try:
+                    methods_text = self.scraper.get_full_text(doi) or ""
+                    self.methods_sections[doi] = 'Full text'
+                except Exception as e:
+                    logging.warning("Failed to fetch full text for %s: %r", doi, e)
+            '''
+
+            combined_text = self.combine_text(title, abstract, concepts, methods_text)
             score = self.classify_text(combined_text)
             self.cache[doi] = score
             
             # Perform in vivo analysis on full paper text
-            in_vivo_analysis = self.in_vivo_detector.process_full_paper(doi)
-            self.in_vivo_results[doi] = in_vivo_analysis
+            #in_vivo_analysis = self.in_vivo_detector.process_full_paper(doi)
+            #self.in_vivo_results[doi] = in_vivo_analysis
             
             # Perform ethics analysis on full paper text
-            ethics_analysis = self.ethics_extractor.process_full_paper(doi)
-            self.ethics_results[doi] = ethics_analysis
-            
-            # Extract Methods section text
-            try:
-                methods_text = self.pmc_fetcher.fetch_methods_text(doi)
-                self.methods_sections[doi] = methods_text or ""
-            except Exception as e:
-                logging.warning(f"Failed to extract Methods section for {doi}: {repr(e)}")
-                self.methods_sections[doi] = ""
+            #ethics_analysis = self.ethics_extractor.process_full_paper(doi)
+            #self.ethics_results[doi] = ethics_analysis
+        
             
             #logging.info(f"{doi}: Classification completed, score={score:.2f}")
             return score

@@ -4,14 +4,13 @@ from animal_study_classifier import AnimalStudyClassifier
 import time
 import random
 from datetime import datetime
-from tqdm import tqdm
 
 async def main():
     start_time = time.time()
 
     all_dois = pd.read_excel("data/publicaties.xlsx")["DOI nummer"].tolist()
     random.seed(42)
-    dois = random.sample(all_dois, min(5, len(all_dois)))
+    dois = random.sample(all_dois, 150)
 
     classifier = AnimalStudyClassifier()
     
@@ -33,23 +32,20 @@ async def main():
     for doi in dois:
         score = results.get(doi, 0.0)
         paper_type = classifier.types.get(doi, "Unknown")
-        
-        # Filter out non-original research (reviews, editorials, etc.) from final output
-        if classifier.should_exclude_type(paper_type):
-            continue
             
         type_source = classifier.type_sources.get(doi, "Unknown")
         abstract = classifier.abstracts.get(doi, "No abstract available")
         title = classifier.titles.get(doi, "No title available")
+        mesh_term = classifier.mesh_terms.get(doi, False)
         
         # Get in vivo analysis
-        in_vivo_analysis = classifier.in_vivo_results.get(doi, {})
+        #in_vivo_analysis = classifier.in_vivo_results.get(doi, {})
         
         # Get ethics analysis
-        ethics_analysis = classifier.ethics_results.get(doi, {})
+        #ethics_analysis = classifier.ethics_results.get(doi, {})
         
         # Get Methods section
-        methods_text = classifier.methods_sections.get(doi, "")
+        #methods_text = classifier.methods_sections.get(doi, "")
         
         results_data.append({
             "DOI": doi,
@@ -58,15 +54,16 @@ async def main():
             "Paper_Type": paper_type,
             "Type_Source": type_source,
             "Abstract": abstract,
-            "Species_Detected": ", ".join(in_vivo_analysis.get("species_detected", [])),
-            "Species_Sentences": " | ".join(in_vivo_analysis.get("species_sentences", [])),
-            "In_Vivo_Keywords": ", ".join(in_vivo_analysis.get("in_vivo_keywords", [])),
-            "In_Vivo_Sentences": " | ".join(in_vivo_analysis.get("evidence_sentences", [])),
-            "Ethics_Institutions": ", ".join(ethics_analysis.get("institutions_detected", [])),
-            "Ethics_Institution_Sentences": " | ".join(ethics_analysis.get("institution_sentences", [])),
-            "Ethics_Keywords": ", ".join(ethics_analysis.get("ethics_keywords", [])),
-            "Ethics_Sentences": " | ".join(ethics_analysis.get("evidence_sentences", [])),
-            "Methods_Section": methods_text,
+            "Mesh_Term": mesh_term,
+            #"Species_Detected": ", ".join(in_vivo_analysis.get("species_detected", [])),
+            #"Species_Sentences": " | ".join(in_vivo_analysis.get("species_sentences", [])),
+            #"In_Vivo_Keywords": ", ".join(in_vivo_analysis.get("in_vivo_keywords", [])),
+            #"In_Vivo_Sentences": " | ".join(in_vivo_analysis.get("evidence_sentences", [])),
+            #"Ethics_Institutions": ", ".join(ethics_analysis.get("institutions_detected", [])),
+            #"Ethics_Institution_Sentences": " | ".join(ethics_analysis.get("institution_sentences", [])),
+            #"Ethics_Keywords": ", ".join(ethics_analysis.get("ethics_keywords", [])),
+            #"Ethics_Sentences": " | ".join(ethics_analysis.get("evidence_sentences", [])),
+            #"Methods_Section": methods_text,
             "Processing_Status": "Success" if doi not in classifier.errors else "Error",
             "Error_Message": classifier.errors.get(doi, "")
         })
