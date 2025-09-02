@@ -14,7 +14,6 @@ from animal_evidence_extractor import InVivoDetector
 from ethics_extractor import EthicsExtractor
 from pmc_text_fetcher import PMCTextFetcher
 from tqdm.asyncio import tqdm
-from pdf_scraper import PDFScraper
 
 
 # -------------------- SSL Context --------------------
@@ -46,8 +45,7 @@ class AnimalStudyClassifier:
         ]
         self.target_label = self.candidate_labels[0]
 
-        # init scraper
-        self.scraper = PDFScraper()
+        self.species_list = ['Mice', 'Rats', 'Zebrafish']
 
         # Cache DOI results
         self.cache: Dict[str, float] = {}
@@ -62,6 +60,8 @@ class AnimalStudyClassifier:
         self.titles: Dict[str, str] = {}
         # Track mesh terms
         self.mesh_terms: Dict[str, bool] = {}
+        # Track species terms
+        self.species: Dict[str, str] = {}
         # Track in vivo analysis results
         self.in_vivo_results: Dict[str, Dict] = {}
         # Track ethics analysis results
@@ -167,9 +167,9 @@ class AnimalStudyClassifier:
         return re.sub(r'</?jats:[^>]+>', '', abstract)
 
     @staticmethod
-    def combine_text(title: str, abstract: str, concepts: List[dict], methods: str) -> str:
+    def combine_text(title: str, abstract: str, concepts: List[dict]) -> str:
         concepts_text = ", ".join([f"{c['display_name']} ({c.get('score', 0):.2f})" for c in concepts])
-        return f"Title: {title}\nAbstract: {abstract}\nConcepts: {concepts_text}\nMethods: {methods}"
+        return f"Title: {title}\nAbstract: {abstract}\nConcepts: {concepts_text}"
 
     # -------------------- Type Filtering --------------------
     def should_exclude_type(self, paper_type: str) -> bool:
@@ -228,6 +228,17 @@ class AnimalStudyClassifier:
                     self.mesh_terms[doi] = True
                 else:
                     self.mesh_terms[doi] = False
+
+                # Get species for this DOI
+                self.species[doi] = ""  # Default to empty string if no species match
+                for d in openalex_data.get('mesh', []):
+                    descriptor = d.get('descriptor_name', '')
+                    for s in self.species_list:
+                        if s in descriptor:
+                            self.species[doi] = s
+                            break
+                    if self.species[doi]:
+                        break
 
                 ## Get abstract
                 abstract = None
@@ -289,26 +300,7 @@ class AnimalStudyClassifier:
                 # Store the abstract
                 self.abstracts[doi] = abstract
 
-            # Extract Methods section text
-            
-            methods_text = ""
-            '''
-            try:
-                methods_text = self.pmc_fetcher.fetch_methods_text(doi) or ""
-                self.methods_sections[doi] = methods_text
-            except Exception as e:
-                logging.warning("Failed to extract Methods section for %s: %r", doi, e)
-
-            # Fallback to full text if no Methods section found
-            if not methods_text.strip():
-                try:
-                    methods_text = self.scraper.get_full_text(doi) or ""
-                    self.methods_sections[doi] = 'Full text'
-                except Exception as e:
-                    logging.warning("Failed to fetch full text for %s: %r", doi, e)
-            '''
-
-            combined_text = self.combine_text(title, abstract, concepts, methods_text)
+            combined_text = self.combine_text(title, abstract, concepts)
             score = self.classify_text(combined_text)
             self.cache[doi] = score
             
@@ -319,7 +311,6 @@ class AnimalStudyClassifier:
             # Perform ethics analysis on full paper text
             #ethics_analysis = self.ethics_extractor.process_full_paper(doi)
             #self.ethics_results[doi] = ethics_analysis
-        
             
             #logging.info(f"{doi}: Classification completed, score={score:.2f}")
             return score
