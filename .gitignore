@@ -144,7 +144,9 @@ output_*.xlsx
 logs/
 *.log
 azure/batches/*
+azure/output/*
 !azure/batches/.gitkeep
+!azure/output/.gitkeep
 
 # Model files and caches
 *.pkl

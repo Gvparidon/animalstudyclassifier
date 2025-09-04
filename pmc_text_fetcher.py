@@ -320,5 +320,5 @@ class PMCTextFetcher:
 
 if __name__ == "__main__":
     fetcher = PMCTextFetcher()
-    methods_text = fetcher.fetch_methods_text('10.4049/JIMMUNOL.2400065')
-    print(methods_text)
+    methods_text = fetcher.fetch_methods_text('10.1080/15376516.2023.2281610')
+    print(methods_text == '')

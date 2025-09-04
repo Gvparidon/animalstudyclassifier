@@ -45,7 +45,7 @@ class AnimalStudyClassifier:
         ]
         self.target_label = self.candidate_labels[0]
 
-        self.species_list = ['Mice', 'Rats', 'Zebrafish']
+        self.species_list = ['Mice', 'Rats', 'Zebrafish', 'Drosophila', 'Callithrix', 'Gastropoda']
 
         # Cache DOI results
         self.cache: Dict[str, float] = {}
@@ -84,7 +84,7 @@ class AnimalStudyClassifier:
         self.excluded_types = {
             'review', 'conference-review', 'systematic-review', 'meta-analysis',
             'editorial', 'letter', 'commentary', 'correspondence', 'case-report',
-            'book-review', 'book-chapter', 'conference-paper', 'preprint'
+            'book-review', 'book-chapter', 'conference-paper', 'preprint', 'erratum'
         }
 
     # -------------------- Async HTTP with retries --------------------

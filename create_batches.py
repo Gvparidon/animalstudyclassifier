@@ -5,6 +5,7 @@ import json
 import yaml
 from datetime import datetime
 from pdf_scraper import PDFScraper
+from pmc_text_fetcher import PMCTextFetcher
 
 class BatchCreator:
     def __init__(self, input_file, azure_dir, batch_size=100):
@@ -19,74 +20,87 @@ class BatchCreator:
 
     def create_batches(self):
         prompt = self._load_prompt()
-        scraper = PDFScraper()
+        # scraper = PDFScraper()
+        fetcher = PMCTextFetcher()
 
         timestamp = datetime.now().strftime("%Y%m%d-%H%M")
-        output_file = os.path.join(self.azure_dir, 'batches', f"batch_{timestamp}.jsonl")
+        batch_dir = os.path.join(self.azure_dir, 'batches')
+        os.makedirs(batch_dir, exist_ok=True)
 
-        with open(output_file, "w", encoding="utf-8") as f:
-            for i, doi in enumerate(self.data['DOI']):
+        dois = self.data['DOI'].tolist()
 
-                full_text = scraper.get_full_text(doi)
-                
+        batch_files = []
+        for batch_idx in range(0, len(dois), self.batch_size):
+            batch = dois[batch_idx: batch_idx + self.batch_size]
+            output_file = os.path.join(
+                batch_dir,
+                f"batch_{timestamp}_{batch_idx//self.batch_size + 1}.jsonl"
+            )
 
-                task_obj = {
-                    "custom_id": f"task-{i}",
-                    "method": "POST",
-                    "url": "/chat/completions",
-                    "body": {
-                        "model": "gpt-4o-mini",
-                        "messages": [
-                            {"role": "system", "content": prompt},
-                            {"role": "user", "content": full_text}
-                        ],
-                        "response_format": {
-                            "type": "json_schema",
-                            "json_schema": {
-                                "name": "AnimalStudyResponse",
-                                "strict": True,
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "animal_testing": {
-                                            "type": "string",
-                                            "enum": ["yes", "no"]
+            with open(output_file, "w", encoding="utf-8") as f:
+                for doi in batch:
+                    # full_text = scraper.get_full_text(doi)
+                    method_section = fetcher.fetch_methods_text(doi)
+                    if method_section == '':
+                        continue
+
+                    task_obj = {
+                        "custom_id": doi,
+                        "method": "POST",
+                        "url": "/chat/completions",
+                        "body": {
+                            "model": "gpt-4o-mini",
+                            "messages": [
+                                {"role": "system", "content": prompt},
+                                {"role": "user", "content": method_section}
+                            ],
+                            "response_format": {
+                                "type": "json_schema",
+                                "json_schema": {
+                                    "name": "AnimalStudyResponse",
+                                    "strict": True,
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "animal_testing": {
+                                                "type": "string",
+                                                "enum": ["yes", "no"]
+                                            },
+                                            "in_vivo": {
+                                                "type": "string",
+                                                "enum": ["yes", "no"]
+                                            },
+                                            "location": {
+                                                "type": "string"
+                                            },
+                                            "species": {
+                                                "type": "string"
+                                            }
                                         },
-                                        "in_vivo": {
-                                            "type": "string",
-                                            "enum": ["yes", "no"]
-                                        },
-                                        "location": {
-                                            "type": "string"
-                                        },
-                                        "species": {
-                                            "type": "string"
-                                        }
-                                    },
-                                    "required": ["animal_testing", "in_vivo", "location", "species"],
-                                    "additionalProperties": False
+                                        "required": ["animal_testing", "in_vivo", "location", "species"],
+                                        "additionalProperties": False
+                                    }
                                 }
                             }
                         }
                     }
-                }
-                
 
+                    f.write(json.dumps(task_obj) + "\n")
 
-                f.write(json.dumps(task_obj) + "\n")
+            print(f"Batch file created at: {output_file}")
+            batch_files.append(output_file)
 
-        print(f"JSONL file created at: {output_file}")
-        scraper.close()
-        return output_file
+        return batch_files
 
 
 if __name__ == "__main__":
-    input_file = "data/output.xlsx"
+    input_file = "data/output_20250902_232836.xlsx"
     azure_dir = "azure"
-    batch_size = 100
+    batch_size = 60
     df = pd.read_excel(input_file)
-    df = df.head(1)
 
-    
+    df = df[(df.BART_MNLI_Score >= 0.7) | (df.Mesh_Term == True)]
+    df = df[~df.duplicated(subset='DOI')]
+
     batch_creator = BatchCreator(df, azure_dir, batch_size)
     batch_creator.create_batches()

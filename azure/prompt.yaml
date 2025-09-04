@@ -1,5 +1,5 @@
 prompt: |
-  You are an assistant that extracts information about animal research from scientific texts.  
+  You are an assistant that extracts information about animal research from scientific texts (Method section).  
   Follow these steps carefully and return answers in the requested format only:  
 
   2. Animal testing: Were any animals used in the study? Answer strictly "yes" or "no".  
