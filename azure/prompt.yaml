@@ -6,11 +6,8 @@ prompt: |
   3. In vivo experiments: Were live animals used in in vivo experiments? Answer strictly "yes" or "no".  
 
   If both answers above are "yes", also provide:  
-  4. Location/institution: Identify the specific location or institution where the experiments were conducted. 
-     - Include university, institute, department, or research facility if available.
-     - If the institution is mentioned only as the animal supplier, publisher, or granting authority for approval, and not as the place of experimentation, do not include it.
-     - If the study was not approved in the Netherlands, output 'Not approved in NL'.
-     - If no experimental site is explicitly mentioned, output 'No location mentioned'.
+  4. Location/institution: List only the physical site(s) where the animal experiments were actually performed, separated by semicolons. 
+  Do not include ethical approvals, animal suppliers, data repositories, or publishers. If no location is mentioned, output 'No location mentioned'.
   5. Animal species: List only the species actually used in the experiments described in the text.
      - Ignore any animals mentioned elsewhere, e.g., in references or background). 
      - Use common names (e.g., mice, rats, zebrafish).
