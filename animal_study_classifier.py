@@ -12,7 +12,7 @@ import ssl
 import certifi
 from animal_evidence_extractor import InVivoDetector
 from ethics_extractor import EthicsExtractor
-from pmc_text_fetcher import PMCTextFetcher
+from text_fetcher import PaperFetcher
 from tqdm.asyncio import tqdm
 
 
@@ -80,8 +80,8 @@ class AnimalStudyClassifier:
         # Initialize ethics extractor
         self.ethics_extractor = EthicsExtractor()
         
-        # Initialize PMC fetcher for methods extraction
-        self.pmc_fetcher = PMCTextFetcher(tool_name="animal_study_classifier", email="hi.hoi@mail.nl")
+        # Initialize paper fetcher for methods extraction
+        self.paper_fetcher = PaperFetcher(tool_name="animal_study_classifier", email="hi.hoi@mail.nl")
         
         # Types to exclude (original research filter)
         self.excluded_types = {
@@ -348,12 +348,3 @@ class AnimalStudyClassifier:
                 logging.warning(f"Some DOIs had errors: {len(self.errors)} errors logged")
             return dict(zip(doi_list, scores))
 
-
-if __name__ == "__main__":
-    classifier = AnimalStudyClassifier()
-    doi_list = ["10.1111/MYC.13752"]
-    async def main():
-        async with aiohttp.ClientSession() as session:
-            await classifier.check_for_valid_animal_study(doi_list[0], session)
-    asyncio.run(main())
-    print(classifier.first_author_org[doi_list[0]])

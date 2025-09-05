@@ -2,7 +2,7 @@ import re
 import logging
 from typing import Dict, List, Tuple, Set, Optional
 from dataclasses import dataclass
-from pmc_text_fetcher import PMCTextFetcher, FullPaperText, SectionText
+from text_fetcher import PaperFetcher, FullPaperText, SectionText
 
 @dataclass
 class InVivoEvidence:
@@ -20,7 +20,7 @@ class InVivoDetector:
     
     def __init__(self, tool_name: str = "animal_evidence_extractor", email: str = "hi.hoi@mail.nl"):
         # Initialize PMC text fetcher
-        self.pmc_fetcher = PMCTextFetcher(tool_name=tool_name, email=email)
+        self.paper_fetcher = PaperFetcher(tool_name=tool_name, email=email)
         
         # Species patterns
         self.species_patterns = {
