@@ -20,7 +20,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 # --- Setup Logging ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# --- Dataclasses (Unchanged) ---
+# --- Dataclasses ---
 @dataclass
 class SectionText:
     """Represents text from a specific section of a paper"""
@@ -187,7 +187,6 @@ class PaperFetcher:
         resp.raise_for_status()
 
     def _normalize_identifier(self, id_str):
-        # ... (implementation unchanged)
         id_str = id_str.strip()
         if id_str.lower().startswith("doi:"): id_str = id_str[4:].strip()
         if id_str.startswith("10."): return id_str
@@ -195,7 +194,6 @@ class PaperFetcher:
         return id_str
 
     def _doi_to_pmcid(self, doi_or_suffix):
-        # ... (implementation unchanged)
         doi = self._normalize_identifier(doi_or_suffix)
         try:
             resp = self._http_get("https://www.ncbi.nlm.nih.gov/pmc/utils/idconv/v1.0/", {"format": "json", "ids": doi}, expect_json=True)
@@ -211,7 +209,6 @@ class PaperFetcher:
         return None
 
     def _fetch_pmc_jats_xml(self, pmcid):
-        # ... (implementation unchanged)
         numeric = pmcid.replace("PMC", "")
         try:
             resp = self._http_get("https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi", {"db": "pmc", "id": numeric, "retmode": "xml"})
@@ -220,7 +217,6 @@ class PaperFetcher:
         return None
 
     def _extract_sections_from_jats(self, xml_text):
-        # ... (implementation unchanged)
         sections = []
         try:
             soup = BeautifulSoup(xml_text, "lxml-xml")
@@ -286,7 +282,6 @@ class PaperFetcher:
         return BytesIO(pdf_content) if pdf_content else None
         
     def _download_pdf_with_retries(self, url: str) -> Optional[bytes]:
-        # ... (implementation unchanged)
         for attempt in range(1, self.download_retries + 1):
             try:
                 response = requests.get(url, headers=self.scraper_headers, timeout=20)
@@ -300,7 +295,6 @@ class PaperFetcher:
         return None
 
     def _send_pdf_to_grobid(self, pdf_file: BytesIO) -> Optional[str]:
-        # ... (implementation unchanged)
         url = "http://localhost:8070/api/processFulltextDocument"
         self.logger.info("Sending PDF to GROBID for processing...")
         try:
@@ -314,7 +308,6 @@ class PaperFetcher:
         return None
 
     def _extract_sections_from_tei_xml(self, tei_xml: str) -> List[SectionText]:
-        # ... (implementation unchanged)
         self.logger.info("Parsing TEI XML from GROBID...")
         sections = []
         try:
