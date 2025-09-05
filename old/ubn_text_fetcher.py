@@ -3,9 +3,9 @@ import time
 import logging
 from io import BytesIO
 from typing import Optional
+from lxml import etree  
 
 import requests
-from PyPDF2 import PdfReader
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
@@ -17,7 +17,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 
-class PDFScraper:
+class UBNTextFetcher:
     """Scraper for downloading and extracting text from PDFs in the UBN repository."""
 
     def __init__(self, wait_time: int = 10, retries: int = 3, backoff: int = 2):
@@ -55,21 +55,6 @@ class PDFScraper:
         driver.get("https://repository.ubn.ru.nl/discover")  # Load page once
         return driver
 
-
-    @staticmethod
-    def extract_text_from_pdf(pdf_bytes: bytes) -> str:
-        """Extract and clean text from PDF bytes."""
-        try:
-            reader = PdfReader(BytesIO(pdf_bytes))
-            text = "\n".join(page.extract_text() or "" for page in reader.pages)
-            text = text.replace("\xa0", " ")
-            text = re.sub(r"[ \t]+", " ", text)
-            text = re.sub(r"\n+", "\n", text).strip()
-            return text
-        except Exception as e:
-            logging.error(f"Failed to extract text from PDF: {e}")
-            return ""
-
     def download_pdf_with_retries(self, url: str) -> Optional[bytes]:
         """Download a PDF with retry logic and exponential backoff."""
         for attempt in range(1, self.retries + 1):
@@ -84,8 +69,8 @@ class PDFScraper:
         logging.error(f"All {self.retries} attempts failed for {url}")
         return None
 
-    def get_full_text(self, doi: str) -> Optional[str]:
-        """Search the UBN repository by DOI and return cleaned PDF text."""
+    def get_pdf(self, doi: str) -> Optional[str]:
+        """Search the UBN repository by DOI and return PDF."""
         driver = self.driver
         try:
             search_input = WebDriverWait(driver, self.wait_time).until(
@@ -107,7 +92,67 @@ class PDFScraper:
         pdf_content = self.download_pdf_with_retries(full_text_link)
         if not pdf_content:
             return None
-        return self.extract_text_from_pdf(pdf_content)
+        return BytesIO(pdf_content)
+
+    def send_pdf_to_gorbid(self, pdf_file: BytesIO) -> Optional[str]:
+        """Send PDF content to Gorbid and return xml response."""
+
+        # GROBID endpoint
+        url = "http://localhost:8070/api/processFulltextDocument"
+
+        try:
+            # Send PDF to GROBID
+            pdf_file.seek(0)  # Ensure we're at the start of the file
+            resp = requests.post(url, files={"input": pdf_file})
+            resp.raise_for_status()
+            return resp.text
+        except requests.RequestException as e:
+            logging.error(f"Error sending PDF to Gorbid: {e}")
+            return None
+
+    def extract_methods_from_xml(self, tei_xml: str) -> Optional[str]:
+        """Extract methods from xml response."""
+
+        # Parse TEI XML
+        tree = etree.fromstring(tei_xml.encode("utf-8"))
+        ns = {"tei": "http://www.tei-c.org/ns/1.0"}
+
+        methods_text = []
+
+        # 1. Find the <div> with <head>Methods</head>
+        methods_divs = tree.xpath(
+            "//tei:div[tei:head[contains(translate(text(), 'METHOD', 'method'), 'method')]]",
+            namespaces=ns
+        )
+
+        if methods_divs:
+            # 2. Iterate over following <div> siblings to gather the Methods content
+            div = methods_divs[0]
+            for sibling in div.itersiblings():
+                # Stop if we reach a sibling that is likely a new top-level section
+                head = sibling.find("tei:head", namespaces=ns)
+                if head is not None and any(word in head.text.lower() for word in ["result", "discussion", "conclusion"]):
+                    break
+                # Collect paragraphs
+                paragraphs = sibling.xpath(".//tei:p//text()", namespaces=ns)
+                methods_text.extend(paragraphs)
+
+        methods_text = "\n\n".join([p.strip() for p in methods_text if p.strip()])
+
+        if not methods_text:
+            return None
+        else:
+            return methods_text
+    
+    def extract_methods_for_doi(self, doi: str) -> Optional[str]:
+        """Extract methods for a specific DOI."""
+        pdf_file = self.get_pdf(doi)
+        if not pdf_file:
+            return None
+        tei_xml = self.send_pdf_to_gorbid(pdf_file)
+        if not tei_xml:
+            return None
+        return self.extract_methods_from_xml(tei_xml)
 
     def close(self):
         """Close the Selenium WebDriver."""
@@ -118,15 +163,16 @@ class PDFScraper:
 if __name__ == "__main__":
     import time
     start_time = time.time()
-    scraper = PDFScraper()
+    scraper = UBNTextFetcher()
     dois = [
-    "10.1111/ADB.13377"
+    "10.1016/J.CUB.2024.08.048"
     ]
 
     for doi in dois:
-        print(doi)
-        full_text = scraper.get_full_text(doi)
-        print(full_text)
+        methods = scraper.extract_methods_for_doi(doi)
+        if methods:
+            print(methods)
+
     scraper.close()
     end_time = time.time()
     print(f"Total time taken: {end_time - start_time:.2f} seconds")

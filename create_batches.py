@@ -4,8 +4,8 @@ import os
 import json
 import yaml
 from datetime import datetime
-from pdf_scraper import PDFScraper
 from pmc_text_fetcher import PMCTextFetcher
+from ubn_text_fetcher import UBNTextFetcher
 
 class BatchCreator:
     def __init__(self, input_file, azure_dir, batch_size=100):
