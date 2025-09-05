@@ -9,8 +9,10 @@ async def main():
     start_time = time.time()
 
     all_dois = pd.read_excel("data/publicaties.xlsx")["DOI nummer"].tolist()
+    # Remove duplicates to avoid processing same DOI multiple times
+    unique_dois = list(set(all_dois))
     random.seed(422)
-    dois = random.sample(all_dois, 2)
+    dois = random.sample(unique_dois, 2)
     #dois = all_dois
 
     classifier = AnimalStudyClassifier()
