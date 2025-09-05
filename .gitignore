@@ -165,4 +165,4 @@ tmp/
 *.temp
 
 # Analysis scripts
-check_enhanced_results.py
+results_analyzer.py
