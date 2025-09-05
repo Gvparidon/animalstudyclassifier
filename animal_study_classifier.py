@@ -62,10 +62,9 @@ class AnimalStudyClassifier:
         self.mesh_terms: Dict[str, bool] = {}
         # Track species terms
         self.species: Dict[str, str] = {}
-        # Track first author organization
-        self.first_author_org: Dict[str, str] = {}
-        # Track last author organization
-        self.last_author_org: Dict[str, str] = {}
+        # Track first/last author organization
+        self.first_author_org: Dict[str, List[str]] = {}
+        self.last_author_org: Dict[str, List[str]] = {}
         # Track in vivo analysis results
         self.in_vivo_results: Dict[str, Dict] = {}
         # Track ethics analysis results
@@ -275,8 +274,8 @@ class AnimalStudyClassifier:
                 concepts = openalex_data.get('concepts', [])
 
                 # Get first/second author organization
-                self.first_author_org[doi] = openalex_data.get('authorships', [{}])[0].get('raw_affiliation_strings', ["Unknown"])[0]
-                self.last_author_org[doi] = openalex_data.get('authorships', [{}])[-1].get('raw_affiliation_strings', ["Unknown"])[0]
+                self.first_author_org[doi] = openalex_data.get('authorships', [{}])[0].get('raw_affiliation_strings', ["Unknown"])
+                self.last_author_org[doi] = openalex_data.get('authorships', [{}])[-1].get('raw_affiliation_strings', ["Unknown"])
 
             else:
                 # Fallback to Crossref if OpenAlex missing
@@ -348,3 +347,13 @@ class AnimalStudyClassifier:
             if self.errors:
                 logging.warning(f"Some DOIs had errors: {len(self.errors)} errors logged")
             return dict(zip(doi_list, scores))
+
+
+if __name__ == "__main__":
+    classifier = AnimalStudyClassifier()
+    doi_list = ["10.1111/MYC.13752"]
+    async def main():
+        async with aiohttp.ClientSession() as session:
+            await classifier.check_for_valid_animal_study(doi_list[0], session)
+    asyncio.run(main())
+    print(classifier.first_author_org[doi_list[0]])

@@ -9,9 +9,9 @@ async def main():
     start_time = time.time()
 
     all_dois = pd.read_excel("data/publicaties.xlsx")["DOI nummer"].tolist()
-    #random.seed(422)
-    #dois = random.sample(all_dois, 50)
-    dois = all_dois
+    random.seed(422)
+    dois = random.sample(all_dois, 2)
+    #dois = all_dois
 
     classifier = AnimalStudyClassifier()
     
@@ -61,8 +61,8 @@ async def main():
             "Abstract": abstract,
             "Mesh_Term": mesh_term,
             "Species": species,
-            "First_Author_Organization": first_author_org,
-            "Last_Author_Organization": last_author_org,
+            "First_Author_Organization": "; ".join(first_author_org),
+            "Last_Author_Organization": "; ".join(last_author_org),
             "Species_Detected": ", ".join(in_vivo_analysis.get("species_detected", [])),
             "Species_Sentences": " | ".join(in_vivo_analysis.get("species_sentences", [])),
             "In_Vivo_Keywords": ", ".join(in_vivo_analysis.get("in_vivo_keywords", [])),

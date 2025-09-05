@@ -3,24 +3,25 @@ prompt: |
   Follow these steps carefully and return answers in the requested format only:  
 
   1. Animal testing: Were any animals physically experimented on by the authors themselves in this study, as described in the Methods?
-   -Answer strictly "yes" or "no".
-   -Only count animals that were actually handled, treated, or manipulated by the authors during the experiments in this paper.
-   -Do not count animals mentioned in previous studies, publicly available datasets, or experiments that are only planned or proposed for future work.
+   - Answer strictly "yes" or "no".
+   - Only count animals that were actually handled, treated, or manipulated by the authors during the experiments in this paper.
+   - Do not count animals mentioned in previous studies, publicly available datasets, or experiments that are only planned or proposed for future work.
 
   2. In vivo experiments: Were live animals physically used by the authors themselves in experiments in this study?
-   -Answer strictly "yes" or "no". 
-   -Do not count animals used in previous studies, publicly available datasets, or planned/future experiments. Only include animals actually handled 
-    or treated by the authors as part of the work reported in this paper.
+   - Answer strictly "yes" or "no". 
+   - Do not count animals used in previous studies, publicly available datasets, or planned/future experiments. Only include animals actually handled 
+     or treated by the authors as part of the work reported in this paper.
 
-  3. Location/institution: List only the physical site(s) where the animal experiments were actually performed, separated by semicolons. 
-   -Do not include ethical approvals, animal suppliers, data repositories, or publishers. If no location is mentioned, output 'No location mentioned'.
+  3. Location/institution: List only the physical site(s) and country where the animal experiments were actually performed. 
+   - Do not include ethical approvals, committees, animal suppliers, data repositories, or publishers. If no location is mentioned, output 'No location mentioned'.
+   - If multiple institutions are mentioned, list them all separated by semicolons.
 
   4. Animal species: List only the species actually used in the experiments described in the text.
    - Ignore any animals mentioned elsewhere, e.g., in references or background). 
-   - Use common names (e.g., mice, rats, zebrafish).
+   - Give a common, everyday category for this species.
    - If multiple species are mentioned, list them all separated by semicolons.
    - Do not include humans, cell lines, or animals not directly used in the experiments.
 
   5. Approving organization: List the name and country of the organization/committee that approved the animal experiment 
      (e.g., Institutional Animal Care and Use Committee at [institution]).   
-     - If no approving organization is mentioned, output 'No approval mentioned'.  
+   - If no approving organization is mentioned, output 'No approval mentioned'.  

@@ -251,6 +251,22 @@ class PMCTextFetcher:
             self.logger.warning(f"Failed to fetch full paper text for {doi}: {paper.error_message}")
             return ""
         return self.extract_methods_text(paper.sections)
+
+    def extract_ethics_text(self, sections: List[SectionText]) -> str:
+        """Return the concatenated text of all Ethics-like sections."""
+        if not sections:
+            return ""
+        ethics_texts: List[str] = []
+        for section in sections:
+            try:
+                section_type = (section.section_type or "").lower()
+                section_name = (section.section_name or "").lower()
+                if section_type == "ethical approval" or re.search(r"\b(ethical\s+approval|animal\s+care|animal\s+use|animal\s+experiment|animal\s+study)\b", section_name, re.I):
+                    if section.text:
+                        ethics_texts.append(section.text)
+            except Exception:
+                continue
+        return " \n\n".join(ethics_texts).strip()
     
     def fetch_full_paper_text(self, doi: str) -> FullPaperText:
         """
@@ -320,5 +336,6 @@ class PMCTextFetcher:
 
 if __name__ == "__main__":
     fetcher = PMCTextFetcher()
-    methods_text = fetcher.fetch_methods_text('10.1080/15376516.2023.2281610')
-    print(methods_text == '')
+    paper = fetcher.fetch_full_paper_text('10.1016/J.CTRO.2024.100875')
+    method = fetcher.extract_ethics_text(paper.sections)
+    print(method)
