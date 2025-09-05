@@ -40,6 +40,7 @@ class ReadAzure:
                                 "in_vivo": parsed_content.get("in_vivo"),
                                 "location": parsed_content.get("location"),
                                 "species": parsed_content.get("species"),
+                                "approving_organization": parsed_content.get("approving_organization")
                             })
                         except Exception as e:
                             print(f"Skipping line due to error: {e}")

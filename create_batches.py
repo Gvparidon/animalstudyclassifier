@@ -75,9 +75,12 @@ class BatchCreator:
                                             },
                                             "species": {
                                                 "type": "string"
+                                            },
+                                            "approving_organization": {
+                                                "type": "string"
                                             }
                                         },
-                                        "required": ["animal_testing", "in_vivo", "location", "species"],
+                                        "required": ["animal_testing", "in_vivo", "location", "species", "approving_organization"],
                                         "additionalProperties": False
                                     }
                                 }
