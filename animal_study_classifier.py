@@ -64,8 +64,8 @@ class AnimalStudyClassifier:
         self.species: Dict[str, str] = {}
         # Track first author organization
         self.first_author_org: Dict[str, str] = {}
-        # Track second author organization
-        self.second_author_org: Dict[str, str] = {}
+        # Track last author organization
+        self.last_author_org: Dict[str, str] = {}
         # Track in vivo analysis results
         self.in_vivo_results: Dict[str, Dict] = {}
         # Track ethics analysis results
@@ -276,7 +276,7 @@ class AnimalStudyClassifier:
 
                 # Get first/second author organization
                 self.first_author_org[doi] = openalex_data.get('authorships', [{}])[0].get('raw_affiliation_strings', ["Unknown"])[0]
-                self.second_author_org[doi] = openalex_data.get('authorships', [{}])[1].get('raw_affiliation_strings', ["Unknown"])[0]
+                self.last_author_org[doi] = openalex_data.get('authorships', [{}])[-1].get('raw_affiliation_strings', ["Unknown"])[0]
 
             else:
                 # Fallback to Crossref if OpenAlex missing
