@@ -102,12 +102,13 @@ class PaperFetcher:
     # --- Core Fetching Logic ---
     def fetch_full_paper_text(self, doi: str, title: Optional[str] = None) -> FullPaperText:
         """
-        Main method to fetch paper text. Tries PMC first, then falls back to UBN/GROBID.
+        Main method to fetch paper text. Tries PMC first, then PMID, then falls back to UBN/GROBID.
 
         Args:
             doi (str): The DOI of the paper.
             title (Optional[str]): The title of the paper, used for validation during UBN fallback.
         """
+        # Step 1: Try PMC (full text)
         self.logger.info(f"Attempting to fetch DOI {doi} from PMC...")
         pmcid = self._doi_to_pmcid(doi)
 
@@ -123,7 +124,24 @@ class PaperFetcher:
                         sections=sections, success=True
                     )
 
-        self.logger.warning(f"Could not find PMCID for {doi}. Falling back to UBN/GROBID.")
+        # Step 2: Try PubMed (abstract and metadata)
+        self.logger.info(f"PMC not available for {doi}. Trying PubMed...")
+        pmid = self._doi_to_pmid(doi)
+        
+        if pmid:
+            xml_text = self._fetch_pubmed_xml(pmid)
+            if xml_text:
+                sections = self._extract_sections_from_pubmed_xml(xml_text)
+                if sections:
+                    full_text = self._extract_full_text_from_sections(sections)
+                    self.logger.info(f"Successfully fetched and parsed DOI {doi} from PubMed (PMID: {pmid}).")
+                    return FullPaperText(
+                        doi=doi, pmcid=None, source='PubMed', full_text=full_text,
+                        sections=sections, success=True
+                    )
+
+        # Step 3: Fall back to UBN/GROBID
+        self.logger.warning(f"Could not find PMCID or PMID for {doi}. Falling back to UBN/GROBID.")
         try:
             # Pass the title from your dataset directly to the validation method
             pdf_bytes_io = self._get_ubn_pdf_with_validation(doi, target_title=title)
@@ -145,7 +163,7 @@ class PaperFetcher:
                 sections=sections, success=True
             )
         except Exception as e:
-            error_message = f"UBN/GROBID fallback failed for {doi}: {e}"
+            error_message = f"All methods failed for {doi}: {e}"
             self.logger.error(error_message, exc_info=False)
             return FullPaperText(
                 doi=doi, pmcid=None, source='None', full_text="", sections=[],
@@ -208,12 +226,36 @@ class PaperFetcher:
         except Exception as e: self.logger.warning(f"[esearch] WARN for {doi}: {e}")
         return None
 
+    def _doi_to_pmid(self, doi_or_suffix):
+        """Convert DOI to PMID using NCBI ID Converter and ESearch"""
+        doi = self._normalize_identifier(doi_or_suffix)
+        try:
+            resp = self._http_get("https://www.ncbi.nlm.nih.gov/pmc/utils/idconv/v1.0/", {"format": "json", "ids": doi}, expect_json=True)
+            rec = resp.json().get("records", [{}])[0]
+            if rec.get("pmid"): return rec["pmid"]
+        except Exception as e: self.logger.warning(f"[idconv] PMID WARN for {doi}: {e}")
+        time.sleep(self.polite_delay)
+        try:
+            resp = self._http_get("https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi", {"db": "pubmed", "term": f"{doi}[DOI]", "retmode": "json", "retmax": "1"}, expect_json=True)
+            ids = resp.json().get("esearchresult", {}).get("idlist", [])
+            if ids: return ids[0]
+        except Exception as e: self.logger.warning(f"[esearch] PMID WARN for {doi}: {e}")
+        return None
+
     def _fetch_pmc_jats_xml(self, pmcid):
         numeric = pmcid.replace("PMC", "")
         try:
             resp = self._http_get("https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi", {"db": "pmc", "id": numeric, "retmode": "xml"})
             return resp.text.strip()
         except Exception as e: self.logger.warning(f"[efetch] WARN for {pmcid}: {e}")
+        return None
+
+    def _fetch_pubmed_xml(self, pmid):
+        """Fetch PubMed XML using PMID (contains abstract and metadata)"""
+        try:
+            resp = self._http_get("https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi", {"db": "pubmed", "id": pmid, "retmode": "xml"})
+            return resp.text.strip()
+        except Exception as e: self.logger.warning(f"[efetch] PMID WARN for {pmid}: {e}")
         return None
 
     def _extract_sections_from_jats(self, xml_text):
@@ -234,6 +276,53 @@ class PaperFetcher:
                         sec_text = sec.get_text(separator=" ", strip=True)
                         if sec_text: sections.append(SectionText(title_text, sec_text, section_type))
         except Exception as e: self.logger.error(f"JATS XML parsing failed: {e}")
+        return sections
+
+    def _extract_sections_from_pubmed_xml(self, xml_text):
+        """Extract sections from PubMed XML (mainly abstract and metadata)"""
+        sections = []
+        try:
+            soup = BeautifulSoup(xml_text, "lxml-xml")
+            
+            # Extract title
+            title_elem = soup.find("ArticleTitle")
+            if title_elem:
+                title_text = title_elem.get_text(strip=True)
+                if title_text:
+                    sections.append(SectionText("Title", title_text, "title"))
+            
+            # Extract abstract
+            abstract_elem = soup.find("Abstract")
+            if abstract_elem:
+                # Handle structured abstracts
+                abstract_texts = []
+                for abstract_text in abstract_elem.find_all("AbstractText"):
+                    label = abstract_text.get("Label", "")
+                    text = abstract_text.get_text(strip=True)
+                    if text:
+                        if label:
+                            abstract_texts.append(f"{label}: {text}")
+                        else:
+                            abstract_texts.append(text)
+                
+                if abstract_texts:
+                    full_abstract = " ".join(abstract_texts)
+                    sections.append(SectionText("Abstract", full_abstract, "abstract"))
+            
+            # Extract keywords/MeSH terms
+            mesh_headings = soup.find_all("MeshHeading")
+            if mesh_headings:
+                mesh_terms = []
+                for mesh in mesh_headings:
+                    descriptor = mesh.find("DescriptorName")
+                    if descriptor:
+                        mesh_terms.append(descriptor.get_text(strip=True))
+                if mesh_terms:
+                    mesh_text = "; ".join(mesh_terms)
+                    sections.append(SectionText("MeSH Terms", mesh_text, "keywords"))
+            
+        except Exception as e: 
+            self.logger.error(f"PubMed XML parsing failed: {e}")
         return sections
     
     def _extract_full_text_from_sections(self, sections):
