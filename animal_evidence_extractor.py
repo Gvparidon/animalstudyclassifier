@@ -298,7 +298,7 @@ class InVivoDetector:
         """Process full paper text from PMC and return in vivo analysis"""
         try:
             # Fetch full paper text from PMC
-            paper_data = self.pmc_fetcher.fetch_full_paper_text(doi)
+            paper_data = self.paper_fetcher.fetch_full_paper_text(doi)
             
             if paper_data.success:
                 # Analyze full paper text with section information

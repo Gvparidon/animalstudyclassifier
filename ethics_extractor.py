@@ -21,7 +21,7 @@ class EthicsExtractor:
     
     def __init__(self, tool_name: str = "ethics_extractor", email: str = "hi.hoi@mail.nl"):
         # Initialize PMC text fetcher
-        self.pmc_fetcher = PaperFetcher(tool_name=tool_name, email=email)
+        self.paper_fetcher = PaperFetcher(tool_name=tool_name, email=email)
         
         # Ethics patterns - core concepts only
         self.ethics_patterns = {
@@ -291,7 +291,7 @@ class EthicsExtractor:
         """Process full paper text from PMC and return ethics analysis"""
         try:
             # Fetch full paper text from PMC
-            paper_data = self.pmc_fetcher.fetch_full_paper_text(doi)
+            paper_data = self.paper_fetcher.fetch_full_paper_text(doi)
             
             if paper_data.success:
                 # Analyze full paper text with section information
