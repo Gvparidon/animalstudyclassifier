@@ -45,7 +45,7 @@ class AnimalStudyClassifier:
         ]
         self.target_label = self.candidate_labels[0]
 
-        self.species_list = ['Mice', 'Rats', 'Zebrafish', 'Drosophila', 'Callithrix', 'Gastropoda']
+        self.species_list = ['Mice', 'Rats', 'Zebrafish', 'Drosophila', 'Callithrix', 'Gastropoda', 'Hylobates']
 
         # Cache DOI results
         self.cache: Dict[str, float] = {}
@@ -62,6 +62,10 @@ class AnimalStudyClassifier:
         self.mesh_terms: Dict[str, bool] = {}
         # Track species terms
         self.species: Dict[str, str] = {}
+        # Track first author organization
+        self.first_author_org: Dict[str, str] = {}
+        # Track second author organization
+        self.second_author_org: Dict[str, str] = {}
         # Track in vivo analysis results
         self.in_vivo_results: Dict[str, Dict] = {}
         # Track ethics analysis results
@@ -269,6 +273,10 @@ class AnimalStudyClassifier:
                 self.abstracts[doi] = abstract
 
                 concepts = openalex_data.get('concepts', [])
+
+                # Get first/second author organization
+                self.first_author_org[doi] = openalex_data.get('authorships', [{}])[0].get('raw_affiliation_strings', ["Unknown"])[0]
+                self.second_author_org[doi] = openalex_data.get('authorships', [{}])[1].get('raw_affiliation_strings', ["Unknown"])[0]
 
             else:
                 # Fallback to Crossref if OpenAlex missing

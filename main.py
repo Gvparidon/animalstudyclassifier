@@ -39,6 +39,9 @@ async def main():
         title = classifier.titles.get(doi, "No title available")
         mesh_term = classifier.mesh_terms.get(doi, False)
         species = classifier.species.get(doi, "")
+
+        first_author_org = classifier.first_author_org.get(doi, "Unknown")
+        second_author_org = classifier.second_author_org.get(doi, "Unknown")
         
         # Get in vivo analysis
         in_vivo_analysis = classifier.in_vivo_results.get(doi, {})
@@ -58,6 +61,8 @@ async def main():
             "Abstract": abstract,
             "Mesh_Term": mesh_term,
             "Species": species,
+            "First_Author_Organization": first_author_org,
+            "Second_Author_Organization": second_author_org,
             "Species_Detected": ", ".join(in_vivo_analysis.get("species_detected", [])),
             "Species_Sentences": " | ".join(in_vivo_analysis.get("species_sentences", [])),
             "In_Vivo_Keywords": ", ".join(in_vivo_analysis.get("in_vivo_keywords", [])),
