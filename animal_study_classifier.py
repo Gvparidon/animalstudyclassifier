@@ -138,7 +138,7 @@ class AnimalStudyClassifier:
                 async with session.get(pmid_url, timeout=60, ssl=ssl_context) as resp:
                     if resp.status != 200:
                         logging.warning(f"PubMed request failed with status {resp.status}")
-                        return "No abstract available"
+                        return None
 
                     text = await resp.text()
                     soup = BeautifulSoup(text, "html.parser")
@@ -146,10 +146,10 @@ class AnimalStudyClassifier:
                     if abstract_div:
                         return abstract_div.get_text(strip=True, separator=" ")
                     else:
-                        return "No abstract available"
+                        return None
             except Exception as e:
                 logging.error(f"Failed to fetch PubMed abstract from {pmid_url}: {repr(e)}")
-                return "No abstract available"
+                return None
 
     # -------------------- Data Processing --------------------
     @staticmethod
@@ -166,7 +166,7 @@ class AnimalStudyClassifier:
     @staticmethod
     def clean_abstract(abstract: Optional[str]) -> str:
         if not abstract:
-            return "No abstract available"
+            return None
         return re.sub(r'</?jats:[^>]+>', '', abstract)
 
     @staticmethod
@@ -265,7 +265,7 @@ class AnimalStudyClassifier:
                         abstract = self.reconstruct_abstract(openalex_data.get('abstract_inverted_index'))
                     except Exception as e:
                         logging.error(f"Failed to fetch abstract for {doi}: {repr(e)}")
-                        abstract = "No abstract available"
+                        abstract = None
                         self.errors[doi] = "Failed to fetch abstract"
                 
                 # Store the abstract
@@ -348,3 +348,26 @@ class AnimalStudyClassifier:
                 logging.warning(f"Some DOIs had errors: {len(self.errors)} errors logged")
             return dict(zip(doi_list, scores))
 
+
+
+if __name__ == "__main__":
+
+    async def main():
+        classifier = AnimalStudyClassifier()
+        doi_list = [
+            "10.1016/J.EKIR.2024.02.1442"
+        ]
+        results = await classifier.batch_check(doi_list)
+
+        # Print abstracts
+        for doi in doi_list:
+            abstract = classifier.abstracts.get(doi, "No abstract available")
+            print(f"{doi}: {abstract}")
+
+        # Print scores
+        for doi in doi_list:
+            score = results.get(doi, 0.0)
+            print(f"{doi}: {score}")
+
+    # Properly run the async main
+    asyncio.run(main())
