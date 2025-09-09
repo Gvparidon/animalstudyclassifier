@@ -19,7 +19,7 @@ async def main():
 
     # Set random seed for reproducibility and sample a subset of DOIs
     random.seed(422)
-    dois = random.sample(unique_dois, 4)
+    dois = random.sample(unique_dois, 40)
     #dois = unique_dois
 
     classifier = AnimalStudyClassifier()
@@ -52,15 +52,7 @@ async def main():
 
         first_author_org = classifier.first_author_org.get(doi, "Unknown")
         last_author_org = classifier.last_author_org.get(doi, "Unknown")
-        
-        # Get in vivo analysis
-        in_vivo_analysis = classifier.in_vivo_results.get(doi, {})
-        
-        # Get ethics analysis
-        ethics_analysis = classifier.ethics_results.get(doi, {})
-        
-        # Get Methods section
-        methods_text = classifier.methods_sections.get(doi, "")
+
         
         results_data.append({
             "DOI": doi,
@@ -74,15 +66,6 @@ async def main():
             "First_Author_Organization": first_author_org,
             "Last_Author_Organization": last_author_org,
             "Publisher": publisher,
-            "Species_Detected": ", ".join(in_vivo_analysis.get("species_detected", [])),
-            "Species_Sentences": " | ".join(in_vivo_analysis.get("species_sentences", [])),
-            "In_Vivo_Keywords": ", ".join(in_vivo_analysis.get("in_vivo_keywords", [])),
-            "In_Vivo_Sentences": " | ".join(in_vivo_analysis.get("evidence_sentences", [])),
-            "Ethics_Institutions": ", ".join(ethics_analysis.get("institutions_detected", [])),
-            "Ethics_Institution_Sentences": " | ".join(ethics_analysis.get("institution_sentences", [])),
-            "Ethics_Keywords": ", ".join(ethics_analysis.get("ethics_keywords", [])),
-            "Ethics_Sentences": " | ".join(ethics_analysis.get("evidence_sentences", [])),
-            "Methods_Section": methods_text,
             "Processing_Status": "Success" if doi not in classifier.errors else "Error",
             "Error_Message": classifier.errors.get(doi, "")
         })

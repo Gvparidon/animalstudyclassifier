@@ -1,22 +1,24 @@
-import re
-import logging
-from typing import Optional, List, Dict
-import aiohttp
+# Standard library
 import asyncio
-from aiolimiter import AsyncLimiter
-from transformers import pipeline
-import torch
-import random
-from bs4 import BeautifulSoup
-import ssl
+import logging
 import os
+import random
+import re
+import ssl
+from typing import Dict, List, Optional
+
+# Third-party libraries
+import aiohttp
 import certifi
-from animal_evidence_extractor import InVivoDetector
-from ethics_extractor import EthicsExtractor
-from text_fetcher import PaperFetcher
+from aiolimiter import AsyncLimiter
+from bs4 import BeautifulSoup
 from tqdm.asyncio import tqdm
+import torch
+from transformers import pipeline
+from dotenv import load_dotenv
 
 # -------------------- API Keys ---------------------
+load_dotenv()
 ELSEVIER_KEY = os.getenv("ELSEVIER_KEY")
 
 # -------------------- SSL Context --------------------
@@ -70,23 +72,8 @@ class AnimalStudyClassifier:
         # Track first/last author organization
         self.first_author_org: Dict[str, List[str]] = {}
         self.last_author_org: Dict[str, List[str]] = {}
-        # Track in vivo analysis results
-        self.in_vivo_results: Dict[str, Dict] = {}
-        # Track ethics analysis results
-        self.ethics_results: Dict[str, Dict] = {}
-        # Track extracted Methods sections
-        self.methods_sections: Dict[str, str] = {}
         # Track errors
         self.errors: Dict[str, str] = {}
-        
-        # Initialize in vivo detector
-        self.in_vivo_detector = InVivoDetector()
-        
-        # Initialize ethics extractor
-        self.ethics_extractor = EthicsExtractor()
-        
-        # Initialize paper fetcher for methods extraction
-        self.paper_fetcher = PaperFetcher(tool_name="animal_study_classifier", email="hi.hoi@mail.nl")
         
         # Types to exclude (original research filter)
         self.excluded_types = {
@@ -105,23 +92,35 @@ class AnimalStudyClassifier:
                 try:
                     async with session.get(url, timeout=timeout) as resp:
                         if resp.status == 200:
-                            return await resp.json()
+                            try:
+                                return await resp.json()
+                            except aiohttp.ContentTypeError as e:
+                                logging.error(f"Invalid JSON from {url}: {e}")
+                                return None
+                        elif resp.status == 429:
+                            retry_after = int(resp.headers.get("Retry-After", base_delay))
+                            logging.warning(f"Rate limited on {url}, retrying after {retry_after}s...")
+                            await asyncio.sleep(retry_after)
                         elif 500 <= resp.status < 600:
                             raise aiohttp.ClientResponseError(
                                 resp.request_info, resp.history,
                                 status=resp.status, message="Server error"
                             )
-                        else:
-                            logging.warning(f"Request to {url} returned status {resp.status}")
+                        elif 400 <= resp.status < 500:
+                            # Permanent client error (except 429), stop retrying
+                            logging.warning(f"Permanent client error {resp.status} on {url}, skipping retries.")
                             return None
+                        else:
+                            logging.warning(f"Unexpected status {resp.status} from {url}")
+                            return None
+
                 except Exception as e:
                     if attempt == max_attempts:
                         logging.error(f"Failed to fetch {url} after {attempt} attempts: {e}")
                         return None
-                    else:
-                        wait_time = base_delay * (2 ** (attempt - 1)) + random.uniform(0, 1)
-                        logging.warning(f"Failed {url} (attempt {attempt}): {e}. Retrying in {wait_time:.1f}s...")
-                        await asyncio.sleep(wait_time)
+                    wait_time = base_delay * (2 ** (attempt - 1)) + random.uniform(0, 1)
+                    logging.warning(f"Failed {url} (attempt {attempt}): {e}. Retrying in {wait_time:.1f}s...")
+                    await asyncio.sleep(wait_time)
 
     async def fetch_openalex(self, session: aiohttp.ClientSession, doi: str) -> Optional[dict]:
         url = f"https://api.openalex.org/works/https://doi.org/{doi}"
