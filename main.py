@@ -18,8 +18,8 @@ async def main():
     unique_dois = df["DOI nummer"].drop_duplicates().tolist()
 
     # Set random seed for reproducibility and sample a subset of DOIs
-    random.seed(422)
-    dois = random.sample(unique_dois, 40)
+    random.seed(42)
+    dois = random.sample(unique_dois, 200)
     #dois = unique_dois
 
     classifier = AnimalStudyClassifier()
@@ -41,17 +41,26 @@ async def main():
     results_data = []
     for doi in dois:
         score = results.get(doi, 0.0)
-        paper_type = classifier.types.get(doi, "Unknown")
+        paper_type = classifier.types.get(doi, "")
             
-        type_source = classifier.type_sources.get(doi, "Unknown")
+        type_source = classifier.type_sources.get(doi, "")
         abstract = classifier.abstracts.get(doi, None)
-        title = classifier.titles.get(doi, "No title available")
-        mesh_term = classifier.mesh_terms.get(doi, False)
+        title = classifier.titles.get(doi, "")
         species = classifier.species.get(doi, "")
         publisher = classifier.publisher.get(doi, "")
+        first_author_org = classifier.first_author_org.get(doi, "")
+        last_author_org = classifier.last_author_org.get(doi, "")
 
-        first_author_org = classifier.first_author_org.get(doi, "Unknown")
-        last_author_org = classifier.last_author_org.get(doi, "Unknown")
+        animals_used = classifier.animals_used.get(doi, False)
+        animal_confidence = classifier.animal_confidence.get(doi, "")
+        animal_evidence_terms = classifier.animal_evidence_terms.get(doi, [])
+
+        in_vivo = classifier.in_vivo.get(doi, False)
+        in_vivo_confidence = classifier.in_vivo_confidence.get(doi, "")
+        in_vivo_evidence_terms = classifier.in_vivo_evidence_terms.get(doi, [])
+
+        species = classifier.species.get(doi, "")
+        species_evidence_terms = classifier.species_evidence_terms.get(doi, [])
 
         
         results_data.append({
@@ -61,11 +70,17 @@ async def main():
             "Paper_Type": paper_type,
             "Type_Source": type_source,
             "Abstract": abstract,
-            "Mesh_Term": mesh_term,
-            "Species": species,
             "First_Author_Organization": first_author_org,
             "Last_Author_Organization": last_author_org,
             "Publisher": publisher,
+            "Animals_Used": animals_used,
+            "Animal_Confidence": animal_confidence,
+            "Animal_Evidence_Terms": animal_evidence_terms,
+            "In_Vivo": in_vivo,
+            "In_Vivo_Confidence": in_vivo_confidence,
+            "In_Vivo_Evidence_Terms": in_vivo_evidence_terms,
+            "Species": species,
+            "Species_Evidence_Terms": species_evidence_terms,
             "Processing_Status": "Success" if doi not in classifier.errors else "Error",
             "Error_Message": classifier.errors.get(doi, "")
         })

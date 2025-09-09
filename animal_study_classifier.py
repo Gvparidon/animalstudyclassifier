@@ -5,7 +5,7 @@ import os
 import random
 import re
 import ssl
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 # Third-party libraries
 import aiohttp
@@ -63,15 +63,31 @@ class AnimalStudyClassifier:
         self.abstracts: Dict[str, str] = {}
         # Track titles
         self.titles: Dict[str, str] = {}
-        # Track mesh terms
-        self.mesh_terms: Dict[str, bool] = {}
-        # Track species terms
-        self.species: Dict[str, str] = {}
         # Track publisher
         self.publisher: Dict[str, str] = {}
         # Track first/last author organization
         self.first_author_org: Dict[str, List[str]] = {}
         self.last_author_org: Dict[str, List[str]] = {}
+
+        # Track animals used
+        self.animals_used: Dict[str, bool] = {}
+        # Track animal confidence
+        self.animal_confidence: Dict[str, float] = {}
+        # Track animal evidence terms
+        self.animal_evidence_terms: Dict[str, List[str]] = {}
+
+        # Track in vivo
+        self.in_vivo: Dict[str, bool] = {}
+        # Track in vivo confidence
+        self.in_vivo_confidence: Dict[str, float] = {}
+        # Track in vivo evidence terms
+        self.in_vivo_evidence_terms: Dict[str, List[str]] = {}
+
+        # Track species
+        self.species: Dict[str, str] = {}
+        # Track species evidence terms
+        self.species_evidence_terms: Dict[str, List[str]] = {}
+
         # Track errors
         self.errors: Dict[str, str] = {}
         
@@ -244,6 +260,129 @@ class AnimalStudyClassifier:
         return False
 
     # -------------------- Classification --------------------
+    def _classify_animals_used(self, mesh_terms: List[Dict]) -> Tuple[bool, str, List[str]]:
+        
+        # Key MeSH UIs for animal detection
+        animal_mesh_uis = {
+            "D000818": "Animals",
+            "D023421": "Models, Animal", 
+            "D004195": "Disease Models, Animal",
+            "D032761": "Animal Experimentation"
+        }
+        
+        # Human-only indicator
+        human_mesh_ui = "D006801"
+        
+        # In vitro indicators
+        in_vitro_uis = {
+            "D066298": "In Vitro Techniques",
+            "D002478": "Cells, Cultured",
+            "D018929": "Cell Culture Techniques"
+        }
+        
+        found_animal_terms = []
+        found_human_terms = []
+        found_in_vitro_terms = []
+        
+        # Check each MeSH term
+        for ui,name in mesh_terms.items():
+            
+            if ui in animal_mesh_uis:
+                found_animal_terms.append(f"{name} ({ui})")
+            elif ui == human_mesh_ui:
+                found_human_terms.append(f"{name} ({ui})")
+            elif ui in in_vitro_uis:
+                found_in_vitro_terms.append(f"{name} ({ui})")
+        
+        # Classification logic based on configuration
+        animals_used = False
+        confidence = "low"
+        evidence_terms = []
+        
+        if found_animal_terms:
+            animals_used = True
+            evidence_terms.extend(found_animal_terms)
+            confidence = "high" if len(found_animal_terms) > 1 else "medium"
+        
+        # Reduce confidence if strong in vitro indicators present
+        if found_in_vitro_terms and confidence in ["high"]:
+            confidence = "medium"
+        
+        return animals_used, confidence, evidence_terms
+    
+    def _classify_in_vivo(self, mesh_terms: List[Dict], animals_confidence: str) -> Tuple[bool, str, List[str]]:
+        
+        # Strong in vitro indicators
+        in_vitro_uis = {
+            "D066298": "In Vitro Techniques",
+            "D002478": "Cells, Cultured", 
+            "D018929": "Cell Culture Techniques",
+            "D046508": "Cell Culture",
+            "D019149": "Bioreactors"
+        }
+        
+        # In vivo supporting terms
+        in_vivo_supporting_uis = {
+            "D032761": "Animal Experimentation",
+            "D023421": "Models, Animal",
+            "D004195": "Disease Models, Animal",
+            "D001522": "Behavioral Phenomena",
+        }
+        
+        found_in_vitro_terms = []
+        found_in_vivo_terms = []
+        
+        for ui, name in mesh_terms.items():
+            if ui in in_vitro_uis:
+                found_in_vitro_terms.append(f"{name} ({ui})")
+            elif ui in in_vivo_supporting_uis:
+                found_in_vivo_terms.append(f"{name} ({ui})")
+        
+        # Classification logic
+        if found_in_vitro_terms and not found_in_vivo_terms:
+            # Strong in vitro indicators, no in vivo support
+            in_vivo = False
+            confidence = "medium"
+            evidence_terms = found_in_vitro_terms
+        
+        elif found_in_vivo_terms:
+            # Strong in vivo support
+            in_vivo = True
+            confidence = "high"
+            evidence_terms = found_in_vivo_terms
+        
+        else:
+            # Default assumption: if animals used, likely in vivo
+            in_vivo = True
+            confidence = "low" if animals_confidence == "low" else "medium"
+            evidence_terms = ["Assumption: animals present without strong in vitro indicators"]
+        
+        return in_vivo, confidence, evidence_terms
+    
+    def _extract_species(self, mesh_terms: List[Dict]) -> Tuple[List[str], List[str]]:
+        
+        # Common species mapping (simplified for now)
+        species_mapping = {
+            "D051379": "Mice",
+            "D051381": "Rats", 
+            "D011817": "Rabbits",
+
+        }
+        
+        found_species = []
+        evidence_terms = []
+        
+        for ui,name in mesh_terms.items():
+            
+            if ui in species_mapping:
+                species_name = species_mapping[ui]
+                if species_name not in found_species:
+                    found_species.append(species_name)
+                    evidence_terms.append(f"{species_name} ({ui})")
+        
+        return found_species, evidence_terms
+
+
     def classify_text(self, text: str) -> float:
         try:
             output = self.classifier(text, self.candidate_labels)
@@ -266,33 +405,48 @@ class AnimalStudyClassifier:
                 # OpenAlex missing
                 self.cache[doi] = 0.0
                 self.errors[doi] = "Missing OpenAlex data"
-                self.titles[doi] = "No title available"
+                self.titles[doi] = None
                 self.abstracts[doi] = None
                 return 0.0
 
-            paper_type = openalex_data.get('type', "Unknown")
+            paper_type = openalex_data.get('type', None)
             self.types[doi] = paper_type
             self.type_sources[doi] = "OpenAlex"
 
             if self.should_exclude_type(paper_type):
                 self.cache[doi] = 0.0
-                self.titles[doi] = openalex_data.get('title', "No title available")
+                self.titles[doi] = openalex_data.get('title', None)
                 self.abstracts[doi] = "Excluded paper type"
                 return 0.0
 
-            # Extract title, abstract, mesh terms, species, publisher, etc.
-            self.titles[doi] = openalex_data.get('title', "No title available")
-            self.mesh_terms[doi] = any(d['descriptor_name'] == 'Animals' for d in openalex_data.get('mesh', []))
-            self.species[doi] = ""
-            for d in openalex_data.get('mesh', []):
-                descriptor = d.get('descriptor_name', '')
-                for s in self.species_list:
-                    if s in descriptor:
-                        self.species[doi] = s
-                        break
-                if self.species[doi]:
-                    break
-            self.publisher[doi] = openalex_data.get("primary_location", {}).get("source", {}).get("host_organization_name", "No host organization available")
+            # Extract title
+            self.titles[doi] = openalex_data.get('title', None)
+
+            # Extract mesh terms
+            mesh_terms = {
+                m['descriptor_ui']: m['descriptor_name']
+                for m in openalex_data.get('mesh', [])
+                if 'descriptor_ui' in m and 'descriptor_name' in m
+            }
+
+            # Check for animal study
+            animals_used, confidence, evidence_terms = self._classify_animals_used(mesh_terms)
+            self.animals_used[doi] = animals_used
+            self.animal_confidence[doi] = confidence
+            self.animal_evidence_terms[doi] = evidence_terms
+
+            # Check for in vivo/species
+            if animals_used:
+                in_vivo, confidence, in_vivo_evidence_terms = self._classify_in_vivo(mesh_terms, confidence)
+                species, species_evidence_terms = self._extract_species(mesh_terms)
+                self.in_vivo[doi] = in_vivo
+                self.in_vivo_confidence[doi] = confidence
+                self.in_vivo_evidence_terms[doi] = in_vivo_evidence_terms
+                self.species[doi] = species
+                self.species_evidence_terms[doi] = species_evidence_terms
+
+            # Publisher
+            self.publisher[doi] = openalex_data.get("primary_location", {}).get("source", {}).get("host_organization_name", None)
 
             # Abstract fetching (PubMed -> CrossRef -> OpenAlex -> Publisher-specific)
             abstract = None
@@ -320,8 +474,8 @@ class AnimalStudyClassifier:
             concepts = openalex_data.get('concepts', [])
 
             # Author institutions
-            self.first_author_org[doi] = [inst.get('display_name', 'Unknown') for inst in openalex_data.get('authorships', [{}])[0].get('institutions', [{"display_name": "Unknown"}])]
-            self.last_author_org[doi] = [inst.get('display_name', 'Unknown') for inst in openalex_data.get('authorships', [{}])[-1].get('institutions', [{"display_name": "Unknown"}])]
+            self.first_author_org[doi] = [inst.get('display_name', None) for inst in openalex_data.get('authorships', [{}])[0].get('institutions', [{"display_name": None}])]
+            self.last_author_org[doi] = [inst.get('display_name', None) for inst in openalex_data.get('authorships', [{}])[-1].get('institutions', [{"display_name": None}])]
 
             combined_text = self.combine_text(self.titles[doi], abstract, concepts)
             score = self.classify_text(combined_text)
