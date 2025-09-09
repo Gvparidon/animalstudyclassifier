@@ -258,135 +258,76 @@ class AnimalStudyClassifier:
     # -------------------- Main DOI Function --------------------
     async def check_for_valid_animal_study(self, doi: str, session: aiohttp.ClientSession) -> float:
         if doi in self.cache:
-            #logging.info(f"{doi}: Returning cached result")
             return self.cache[doi]
 
         try:
             openalex_data = await self.fetch_openalex(session, doi)
 
-            if openalex_data:
-                paper_type = openalex_data.get('type', "Unknown")
-                self.types[doi] = paper_type
-                self.type_sources[doi] = "OpenAlex"
-                
-                if self.should_exclude_type(paper_type):
-                    self.cache[doi] = 0.0
-                    self.titles[doi] = openalex_data.get('title', "No title available")
-                    self.abstracts[doi] = "Excluded paper type"
-                    return 0.0
-                    
-                title = openalex_data.get('title', "No title available")
-                self.titles[doi] = title
+            if not openalex_data:
+                # OpenAlex missing
+                self.cache[doi] = 0.0
+                self.errors[doi] = "Missing OpenAlex data"
+                self.titles[doi] = "No title available"
+                self.abstracts[doi] = None
+                return 0.0
 
-                ## Pubmed MeSH terms is 'animal'
-                if any(d['descriptor_name'] == 'Animals' for d in openalex_data['mesh']):
-                    self.mesh_terms[doi] = True
-                else:
-                    self.mesh_terms[doi] = False
+            paper_type = openalex_data.get('type', "Unknown")
+            self.types[doi] = paper_type
+            self.type_sources[doi] = "OpenAlex"
 
-                # Get species for this DOI
-                self.species[doi] = ""  # Default to empty string if no species match
-                for d in openalex_data.get('mesh', []):
-                    descriptor = d.get('descriptor_name', '')
-                    for s in self.species_list:
-                        if s in descriptor:
-                            self.species[doi] = s
-                            break
-                    if self.species[doi]:
+            if self.should_exclude_type(paper_type):
+                self.cache[doi] = 0.0
+                self.titles[doi] = openalex_data.get('title', "No title available")
+                self.abstracts[doi] = "Excluded paper type"
+                return 0.0
+
+            # Extract title, abstract, mesh terms, species, publisher, etc.
+            self.titles[doi] = openalex_data.get('title', "No title available")
+            self.mesh_terms[doi] = any(d['descriptor_name'] == 'Animals' for d in openalex_data.get('mesh', []))
+            self.species[doi] = ""
+            for d in openalex_data.get('mesh', []):
+                descriptor = d.get('descriptor_name', '')
+                for s in self.species_list:
+                    if s in descriptor:
+                        self.species[doi] = s
                         break
+                if self.species[doi]:
+                    break
+            self.publisher[doi] = openalex_data.get("primary_location", {}).get("source", {}).get("host_organization_name", "No host organization available")
 
-                # Get publisher
-                self.publisher[doi] = (
-                    openalex_data
-                    .get("primary_location", {})
-                    .get("source", {})
-                    .get("host_organization_name", "No host organization available")
-                )
-
-                # -------------------- Get abstract --------------------
+            # Abstract fetching (PubMed -> CrossRef -> OpenAlex -> Publisher-specific)
+            abstract = None
+            try:
+                pmid_url = openalex_data['ids'].get('pmid')
+                if pmid_url:
+                    abstract = await self.fetch_pubmed_abstract(session, pmid_url)
+                if not abstract:
+                    crossref_data = await self.fetch_crossref(session, doi)
+                    abstract = self.clean_abstract(crossref_data.get('abstract') if crossref_data else None)
+                if not abstract:
+                    abstract = self.reconstruct_abstract(openalex_data.get('abstract_inverted_index'))
+                if not abstract:
+                    publisher = self.publisher.get(doi, "")
+                    if publisher in ["Springer Science+Business Media"]:
+                        abstract = await self.fetch_springer_abstract(session, doi)
+                    elif publisher == "Elsevier BV":
+                        abstract = await self.fetch_elsevier_abstract(session, doi)
+            except Exception as e:
+                logging.error(f"Failed to fetch abstract for {doi}: {repr(e)}")
+                self.errors[doi] = "Failed to fetch abstract"
                 abstract = None
 
-                try:
-                    # 1️⃣ Try PubMed
-                    pmid_url = openalex_data['ids'].get('pmid')
-                    if pmid_url:
-                        abstract = await self.fetch_pubmed_abstract(session, pmid_url)
+            self.abstracts[doi] = abstract
+            concepts = openalex_data.get('concepts', [])
 
-                    # 2️⃣ Fallback: Crossref
-                    if not abstract:
-                        crossref_data = await self.fetch_crossref(session, doi)
-                        abstract = self.clean_abstract(crossref_data.get('abstract') if crossref_data else None)
+            # Author institutions
+            self.first_author_org[doi] = [inst.get('display_name', 'Unknown') for inst in openalex_data.get('authorships', [{}])[0].get('institutions', [{"display_name": "Unknown"}])]
+            self.last_author_org[doi] = [inst.get('display_name', 'Unknown') for inst in openalex_data.get('authorships', [{}])[-1].get('institutions', [{"display_name": "Unknown"}])]
 
-                    # 3️⃣ Fallback: OpenAlex inverted index
-                    if not abstract:
-                        abstract = self.reconstruct_abstract(openalex_data.get('abstract_inverted_index'))
-
-                    # 4️⃣ Fallback: Publisher-specific (Springer / Elsevier)
-                    if not abstract:
-                        publisher = self.publisher.get(doi, "")
-                        if publisher in ["Springer Science+Business Media"]:
-                            abstract = await self.fetch_springer_abstract(session, doi)
-                        elif publisher == "Elsevier BV":
-                            abstract = await self.fetch_elsevier_abstract(session, doi)
-
-                except Exception as e:
-                    logging.error(f"Failed to fetch abstract for {doi}: {repr(e)}")
-                    self.errors[doi] = "Failed to fetch abstract"
-                    abstract = None
-
-                # Store the abstract
-                self.abstracts[doi] = abstract
-
-                # Get the concepts
-                concepts = openalex_data.get('concepts', [])
-
-                # Get first/second author organization
-                self.first_author_org[doi] = openalex_data.get('authorships', [{}])[0].get('raw_affiliation_strings', ["Unknown"])
-                self.last_author_org[doi] = openalex_data.get('authorships', [{}])[-1].get('raw_affiliation_strings', ["Unknown"])
-
-            else:
-                # Fallback to Crossref if OpenAlex missing
-                crossref_data = await self.fetch_crossref(session, doi)
-                paper_type = crossref_data.get('type', "Unknown") if crossref_data else "Unknown"
-                self.types[doi] = paper_type
-                self.type_sources[doi] = "CrossRef" if crossref_data else "Unknown"
-                
-                if self.should_exclude_type(paper_type):
-                    # Early exit for excluded types - avoid unnecessary processing
-                    self.cache[doi] = 0.0
-                    if crossref_data:
-                        self.titles[doi] = crossref_data.get('title', ["No title available"])[0]
-                    else:
-                        self.titles[doi] = "No title available"
-                    self.abstracts[doi] = "Excluded paper type"
-                    #logging.info(f"{doi}: Excluded (type: {paper_type})")
-                    return 0.0
-                
-                if not crossref_data:
-                    self.cache[doi] = 0.0
-                    self.errors[doi] = "Missing OpenAlex and CrossRef data"
-                    return 0.0
-                title = crossref_data.get('title', ["No title available"])[0]
-                self.titles[doi] = title
-                abstract = self.clean_abstract(crossref_data.get('abstract'))
-                concepts = []
-                
-                # Store the abstract
-                self.abstracts[doi] = abstract
-
-            combined_text = self.combine_text(title, abstract, concepts)
+            combined_text = self.combine_text(self.titles[doi], abstract, concepts)
             score = self.classify_text(combined_text)
             self.cache[doi] = score
-            
-            # Perform in vivo analysis on full paper text
-            #in_vivo_analysis = self.in_vivo_detector.process_full_paper(doi)
-            #self.in_vivo_results[doi] = in_vivo_analysis
-            
-            # Perform ethics analysis on full paper text
-            #ethics_analysis = self.ethics_extractor.process_full_paper(doi)
-            #self.ethics_results[doi] = ethics_analysis
-            
-            #logging.info(f"{doi}: Classification completed, score={score:.2f}")
+
             return score
 
         except Exception as e:
@@ -394,6 +335,7 @@ class AnimalStudyClassifier:
             logging.error(f"{doi}: Failed with exception {repr(e)}")
             self.cache[doi] = 0.0
             return 0.0
+
 
     # -------------------- Batch Processing --------------------
     async def batch_check(self, doi_list: List[str]) -> Dict[str, float]:

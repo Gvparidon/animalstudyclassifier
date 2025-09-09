@@ -8,14 +8,19 @@ from datetime import datetime
 async def main():
     start_time = time.time()
 
+    # Load publication data
     df = pd.read_excel("data/publicaties.xlsx")
-    df = df[df["DOI nummer"].notna() & (df["DOI nummer"] != "")]
-    all_dois = df['DOI nummer'].tolist()
-    # Remove duplicates to avoid processing same DOI multiple times
-    unique_dois = list(set(all_dois))
+
+    # Filter out rows with missing or empty DOI numbers
+    df = df[df["DOI nummer"].notna() & (df["DOI nummer"].str.strip() != "")]
+
+    # Extract unique DOIs
+    unique_dois = df["DOI nummer"].drop_duplicates().tolist()
+
+    # Set random seed for reproducibility and sample a subset of DOIs
     random.seed(422)
-    dois = random.sample(unique_dois, 2)
-    #dois = all_dois
+    dois = random.sample(unique_dois, 4)
+    #dois = unique_dois
 
     classifier = AnimalStudyClassifier()
     
@@ -39,7 +44,7 @@ async def main():
         paper_type = classifier.types.get(doi, "Unknown")
             
         type_source = classifier.type_sources.get(doi, "Unknown")
-        abstract = classifier.abstracts.get(doi, "No abstract available")
+        abstract = classifier.abstracts.get(doi, None)
         title = classifier.titles.get(doi, "No title available")
         mesh_term = classifier.mesh_terms.get(doi, False)
         species = classifier.species.get(doi, "")
@@ -66,8 +71,8 @@ async def main():
             "Abstract": abstract,
             "Mesh_Term": mesh_term,
             "Species": species,
-            "First_Author_Organization": "; ".join(first_author_org),
-            "Last_Author_Organization": "; ".join(last_author_org),
+            "First_Author_Organization": first_author_org,
+            "Last_Author_Organization": last_author_org,
             "Publisher": publisher,
             "Species_Detected": ", ".join(in_vivo_analysis.get("species_detected", [])),
             "Species_Sentences": " | ".join(in_vivo_analysis.get("species_sentences", [])),
