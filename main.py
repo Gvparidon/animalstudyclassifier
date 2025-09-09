@@ -8,7 +8,9 @@ from datetime import datetime
 async def main():
     start_time = time.time()
 
-    all_dois = pd.read_excel("data/publicaties.xlsx")["DOI nummer"].tolist()
+    df = pd.read_excel("data/publicaties.xlsx")
+    df = df[df["DOI nummer"].notna() & (df["DOI nummer"] != "")]
+    all_dois = df['DOI nummer'].tolist()
     # Remove duplicates to avoid processing same DOI multiple times
     unique_dois = list(set(all_dois))
     random.seed(422)
@@ -41,6 +43,7 @@ async def main():
         title = classifier.titles.get(doi, "No title available")
         mesh_term = classifier.mesh_terms.get(doi, False)
         species = classifier.species.get(doi, "")
+        publisher = classifier.publisher.get(doi, "")
 
         first_author_org = classifier.first_author_org.get(doi, "Unknown")
         last_author_org = classifier.last_author_org.get(doi, "Unknown")
@@ -65,6 +68,7 @@ async def main():
             "Species": species,
             "First_Author_Organization": "; ".join(first_author_org),
             "Last_Author_Organization": "; ".join(last_author_org),
+            "Publisher": publisher,
             "Species_Detected": ", ".join(in_vivo_analysis.get("species_detected", [])),
             "Species_Sentences": " | ".join(in_vivo_analysis.get("species_sentences", [])),
             "In_Vivo_Keywords": ", ".join(in_vivo_analysis.get("in_vivo_keywords", [])),

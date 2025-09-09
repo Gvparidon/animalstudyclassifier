@@ -9,12 +9,15 @@ import torch
 import random
 from bs4 import BeautifulSoup
 import ssl
+import os
 import certifi
 from animal_evidence_extractor import InVivoDetector
 from ethics_extractor import EthicsExtractor
 from text_fetcher import PaperFetcher
 from tqdm.asyncio import tqdm
 
+# -------------------- API Keys ---------------------
+ELSEVIER_KEY = os.getenv("ELSEVIER_KEY")
 
 # -------------------- SSL Context --------------------
 ssl_context = ssl.create_default_context(cafile=certifi.where())
@@ -62,6 +65,8 @@ class AnimalStudyClassifier:
         self.mesh_terms: Dict[str, bool] = {}
         # Track species terms
         self.species: Dict[str, str] = {}
+        # Track publisher
+        self.publisher: Dict[str, str] = {}
         # Track first/last author organization
         self.first_author_org: Dict[str, List[str]] = {}
         self.last_author_org: Dict[str, List[str]] = {}
@@ -150,6 +155,53 @@ class AnimalStudyClassifier:
             except Exception as e:
                 logging.error(f"Failed to fetch PubMed abstract from {pmid_url}: {repr(e)}")
                 return None
+
+    async def fetch_springer_abstract(self, session: aiohttp.ClientSession, doi: str) -> Optional[str]:
+        """
+        Try to scrape Springer abstracts directly from the article page.
+        """
+        url = f"https://doi.org/{doi}"
+        try:
+            async with session.get(url, headers={"User-Agent": "Mozilla/5.0"}, ssl=ssl_context) as resp:
+                if resp.status != 200:
+                    logging.warning(f"Springer request failed with status {resp.status} for {doi}")
+                    return None
+                text = await resp.text()
+                soup = BeautifulSoup(text, "html.parser")
+                abstract_div = soup.find("div", {"class": "c-article-section__content", "id": "Abs1-content"})
+                if abstract_div:
+                    return abstract_div.get_text(strip=True, separator=" ")
+        except Exception as e:
+            logging.error(f"Failed Springer abstract fetch for {doi}: {repr(e)}")
+        return None
+
+    async def fetch_elsevier_abstract(self, session: aiohttp.ClientSession, doi: str) -> Optional[str]:
+        """
+        Use Elsevier API to retrieve abstract.
+        """
+        if not ELSEVIER_KEY:
+            logging.error("No Elsevier API key available")
+            return None
+        
+        url = f"https://api.elsevier.com/content/article/doi/{doi}"
+        headers = {
+            "Accept": "application/json",
+            "X-ELS-APIKey": ELSEVIER_KEY,
+        }
+        try:
+            async with session.get(url, headers=headers, ssl=ssl_context) as resp:
+                if resp.status != 200:
+                    logging.warning(f"Elsevier request failed with status {resp.status} for {doi}")
+                    return None
+                data = await resp.json()
+                return (
+                    data.get("full-text-retrieval-response", {})
+                        .get("coredata", {})
+                        .get("dc:description")
+                )
+        except Exception as e:
+            logging.error(f"Failed Elsevier abstract fetch for {doi}: {repr(e)}")
+        return None
 
     # -------------------- Data Processing --------------------
     @staticmethod
@@ -243,34 +295,49 @@ class AnimalStudyClassifier:
                     if self.species[doi]:
                         break
 
-                ## Get abstract
+                # Get publisher
+                self.publisher[doi] = (
+                    openalex_data
+                    .get("primary_location", {})
+                    .get("source", {})
+                    .get("host_organization_name", "No host organization available")
+                )
+
+                # -------------------- Get abstract --------------------
                 abstract = None
 
-                # Try PubMed
-                pmid_url = openalex_data['ids'].get('pmid')
-                if pmid_url:
-                    try:
+                try:
+                    # 1️⃣ Try PubMed
+                    pmid_url = openalex_data['ids'].get('pmid')
+                    if pmid_url:
                         abstract = await self.fetch_pubmed_abstract(session, pmid_url)
-                    except Exception:
-                        pass
 
-                # Fallback: Crossref
-                if not abstract:
-                    crossref_data = await self.fetch_crossref(session, doi)
-                    abstract = self.clean_abstract(crossref_data.get('abstract') if crossref_data else None)
+                    # 2️⃣ Fallback: Crossref
+                    if not abstract:
+                        crossref_data = await self.fetch_crossref(session, doi)
+                        abstract = self.clean_abstract(crossref_data.get('abstract') if crossref_data else None)
 
-                # Fallback: OpenAlex inverted index
-                if not abstract:
-                    try:
+                    # 3️⃣ Fallback: OpenAlex inverted index
+                    if not abstract:
                         abstract = self.reconstruct_abstract(openalex_data.get('abstract_inverted_index'))
-                    except Exception as e:
-                        logging.error(f"Failed to fetch abstract for {doi}: {repr(e)}")
-                        abstract = None
-                        self.errors[doi] = "Failed to fetch abstract"
-                
+
+                    # 4️⃣ Fallback: Publisher-specific (Springer / Elsevier)
+                    if not abstract:
+                        publisher = self.publisher.get(doi, "")
+                        if publisher in ["Springer Science+Business Media"]:
+                            abstract = await self.fetch_springer_abstract(session, doi)
+                        elif publisher == "Elsevier BV":
+                            abstract = await self.fetch_elsevier_abstract(session, doi)
+
+                except Exception as e:
+                    logging.error(f"Failed to fetch abstract for {doi}: {repr(e)}")
+                    self.errors[doi] = "Failed to fetch abstract"
+                    abstract = None
+
                 # Store the abstract
                 self.abstracts[doi] = abstract
 
+                # Get the concepts
                 concepts = openalex_data.get('concepts', [])
 
                 # Get first/second author organization
@@ -354,20 +421,18 @@ if __name__ == "__main__":
 
     async def main():
         classifier = AnimalStudyClassifier()
-        doi_list = [
-            "10.1016/J.EKIR.2024.02.1442"
-        ]
-        results = await classifier.batch_check(doi_list)
+        import pandas as pd
+        #df = pd.read_excel('data/output_20250902_232836 - Copy.xlsx')
+        #df = df[df.Abstract == 'No abstract available']
+        #df = df[df["DOI"].notna() & (df["DOI"] != "")]
+        doi_list = ['10.1007/S10841-023-00537-0', '10.1007/S10344-023-01760-5', '10.1016/J.AGRFORMET.2024.110179']
+
+        await classifier.batch_check(doi_list)
 
         # Print abstracts
         for doi in doi_list:
-            abstract = classifier.abstracts.get(doi, "No abstract available")
-            print(f"{doi}: {abstract}")
-
-        # Print scores
-        for doi in doi_list:
-            score = results.get(doi, 0.0)
-            print(f"{doi}: {score}")
+            abstract = classifier.abstracts.get(doi, None)
+            print(doi + ": " + abstract)
 
     # Properly run the async main
     asyncio.run(main())
