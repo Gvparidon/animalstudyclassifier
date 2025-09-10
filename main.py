@@ -14,13 +14,21 @@ async def main():
     # Filter out rows with missing or empty DOI numbers
     df = df[df["DOI nummer"].notna() & (df["DOI nummer"].str.strip() != "")]
 
+    # Clean DOIs: strip spaces, remove URL prefix, strip trailing punctuation
+    df["DOI nummer"] = (
+        df["DOI nummer"]
+        .str.strip()
+        .str.replace(r"^https?://(dx\.)?doi\.org/", "", regex=True)  # remove prefix if present
+        .str.rstrip(".,;:!?")  # remove trailing punctuation
+    )
+
     # Extract unique DOIs
     unique_dois = df["DOI nummer"].drop_duplicates().tolist()
 
     # Set random seed for reproducibility and sample a subset of DOIs
-    random.seed(42)
-    dois = random.sample(unique_dois, 200)
-    #dois = unique_dois
+    random.seed(421)
+    #dois = random.sample(unique_dois, 200)
+    dois = unique_dois
 
     classifier = AnimalStudyClassifier()
     

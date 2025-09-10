@@ -327,6 +327,7 @@ class AnimalStudyClassifier:
             "D023421": "Models, Animal",
             "D004195": "Disease Models, Animal",
             "D001522": "Behavioral Phenomena",
+            "D023041": "Xenograft Model Antitumor Assays"
         }
         
         found_in_vitro_terms = []
