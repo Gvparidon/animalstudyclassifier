@@ -4,8 +4,7 @@ import os
 import json
 import yaml
 from datetime import datetime
-from pmc_text_fetcher import PMCTextFetcher
-from ubn_text_fetcher import UBNTextFetcher
+from text_fetcher import PaperFetcher
 
 class BatchCreator:
     def __init__(self, input_file, azure_dir, batch_size=100):
@@ -20,8 +19,8 @@ class BatchCreator:
 
     def create_batches(self):
         prompt = self._load_prompt()
-        # scraper = PDFScraper()
-        fetcher = PMCTextFetcher()
+
+        fetcher = PaperFetcher()
 
         timestamp = datetime.now().strftime("%Y%m%d-%H%M")
         batch_dir = os.path.join(self.azure_dir, 'batches')
@@ -39,20 +38,22 @@ class BatchCreator:
 
             with open(output_file, "w", encoding="utf-8") as f:
                 for doi in batch:
-                    # full_text = scraper.get_full_text(doi)
-                    method_section = fetcher.fetch_methods_text(doi)
-                    if method_section == '':
-                        continue
+                    full_text = fetcher.fetch_full_paper_text(doi, self.data.loc[self.data['DOI'] == doi, 'Title'].values[0], self.data.loc[self.data['DOI'] == doi, 'Publisher'].values[0])
+                    method_section = fetcher.extract_methods_text(full_text.sections)
+                    
+                    abstract = self.data.loc[self.data['DOI'] == doi, 'Abstract'].values[0]
+
+                    content = f"Abstract: {abstract}\nMethod section: {method_section}"
 
                     task_obj = {
                         "custom_id": doi,
                         "method": "POST",
                         "url": "/chat/completions",
                         "body": {
-                            "model": "gpt-4o-mini",
+                            "model": "gpt-4.1",
                             "messages": [
                                 {"role": "system", "content": prompt},
-                                {"role": "user", "content": method_section}
+                                {"role": "user", "content": content}
                             ],
                             "response_format": {
                                 "type": "json_schema",
@@ -97,13 +98,12 @@ class BatchCreator:
 
 
 if __name__ == "__main__":
-    input_file = "data/output_20250902_232836.xlsx"
+    input_file = "data/output_20250911_152540.xlsx"
     azure_dir = "azure"
-    batch_size = 60
+    batch_size = 1200
     df = pd.read_excel(input_file)
 
-    df = df[(df.BART_MNLI_Score >= 0.7) | (df.Mesh_Term == True)]
-    df = df[~df.duplicated(subset='DOI')]
+    df = df[(df.BART_MNLI_Score >= 0.7) | (df.Animals_Used == True)]
 
     batch_creator = BatchCreator(df, azure_dir, batch_size)
     batch_creator.create_batches()

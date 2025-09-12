@@ -48,7 +48,7 @@ class ReadAzure:
 
 
 if __name__ == "__main__":
-    input_file = "data/output_20250902_232836.xlsx"
+    input_file = "data/output_20250911_152540.xlsx"
     azure_dir = "azure"
 
     # Load the Excel file
@@ -62,5 +62,5 @@ if __name__ == "__main__":
     df_merged = df_input.merge(df_azure, on="DOI", how="left")
 
     # To excel  
-    df_merged.to_excel("data/final_output/final_output.xlsx", index=False)
+    df_merged.to_excel("data/final_output/final_output2.xlsx", index=False)
     

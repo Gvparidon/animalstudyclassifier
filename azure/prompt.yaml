@@ -1,8 +1,8 @@
 prompt: |
-  You are an assistant that extracts information about animal research from scientific texts (Method section).  
+  You are an assistant that extracts information about animal research from scientific texts (Abstract and Method section).  
   Follow these steps carefully and return answers in the requested format only:  
 
-  1. Animal testing: Were any animals physically experimented on by the authors themselves in this study, as described in the Methods?
+  1. Animal testing: Were any animals physically experimented on by the authors themselves in this study, as described in the Abstract and Method section?
    - Answer strictly "yes" or "no".
    - Only count animals that were actually handled, treated, or manipulated by the authors during the experiments in this paper.
    - Do not count animals mentioned in previous studies, publicly available datasets, or experiments that are only planned or proposed for future work.

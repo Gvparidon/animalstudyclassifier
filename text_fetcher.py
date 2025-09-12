@@ -1,6 +1,7 @@
 import requests
 import time
 import re
+import os
 import logging
 from typing import Optional, Dict, List
 from dataclasses import dataclass
@@ -16,6 +17,12 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
+from dotenv import load_dotenv
+
+
+# -------------------- API Keys ---------------------
+load_dotenv()
+ELSEVIER_KEY = os.getenv("ELSEVIER_KEY")
 
 # --- Setup Logging ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -100,7 +107,7 @@ class PaperFetcher:
             self._driver = None
 
     # --- Core Fetching Logic ---
-    def fetch_full_paper_text(self, doi: str, title: Optional[str] = None) -> FullPaperText:
+    def fetch_full_paper_text(self, doi: str, title: Optional[str] = None, publisher: Optional[str] = None) -> FullPaperText:
         """
         Main method to fetch paper text. Tries PMC first, then PMID, then falls back to UBN/GROBID.
 
@@ -134,13 +141,49 @@ class PaperFetcher:
                 sections = self._extract_sections_from_pubmed_xml(xml_text)
                 if sections:
                     full_text = self._extract_full_text_from_sections(sections)
-                    self.logger.info(f"Successfully fetched and parsed DOI {doi} from PubMed (PMID: {pmid}).")
-                    return FullPaperText(
-                        doi=doi, pmcid=None, source='PubMed', full_text=full_text,
-                        sections=sections, success=True
+
+                    # validate if methods are in sections
+                    methods_found = any(
+                        section.section_type == "methods" or
+                        re.search(r"\b(methods?|materials\s+and\s+methods?|experimental\s+procedures?)\b",
+                                section.section_name, re.I)
+                        for section in sections
                     )
 
-        # Step 3: Fall back to UBN/GROBID
+                    if methods_found:
+                        self.logger.info(f"Successfully fetched and parsed DOI {doi} from PubMed (PMID: {pmid}).")
+                        return FullPaperText(
+                            doi=doi, pmcid=None, source='PubMed', full_text=full_text,
+                            sections=sections, success=True
+                        )
+                    else:
+                        self.logger.warning(f"PMID {pmid} found for DOI {doi}, but no methods section detected. Falling back to UBN/GROBID.")
+        
+        # Step 3: Try elsevier
+        if publisher == "Elsevier BV":
+            self.logger.info(f"Attempting to fetch DOI {doi} from Elsevier...")
+            url = f'https://api.elsevier.com/content/article/doi/{doi}'
+            headers = {'X-ELS-APIKey': ELSEVIER_KEY, 'Accept': 'application/xml'}
+
+            response = requests.get(url, headers=headers)
+
+            xml_text = response.text
+
+            if xml_text:
+                full_text, sections = self.extract_sections_from_elsevier(xml_text)
+                if sections:
+                    return FullPaperText(
+                        doi=doi, pmcid=None, source='Elsevier', full_text=full_text,
+                        sections=sections, success=True
+                    )
+                else:
+                    self.logger.warning(f"Failed to extract sections from Elsevier XML for DOI {doi}.")
+            else:
+                self.logger.warning(f"Failed to fetch XML from Elsevier for DOI {doi}.")
+
+
+
+        # Step 4: Fall back to UBN/GROBID
         self.logger.warning(f"Could not find PMCID or PMID for {doi}. Falling back to UBN/GROBID.")
         try:
             # Pass the title from your dataset directly to the validation method
@@ -172,12 +215,52 @@ class PaperFetcher:
     
     # --- Helper methods ---
     def extract_methods_text(self, sections: List[SectionText]) -> str:
+        """
+        Extracts the Methods section from GROBID output.
+        Falls back to keyword-based extraction if no section is labeled as 'methods'.
+        Returns a single string containing all Methods text.
+        """
+        # Step 1: Try standard methods detection
         methods_texts = []
         for section in sections:
-            if section.section_type == "methods" or re.search(r"\b(methods?|materials\s+and\s+methods?|experimental\s+procedures?)\b", section.section_name, re.I):
+            if section.section_type.lower() == "methods" or \
+            re.search(r"\b(methods?|materials\s+and\s+methods?|experimental\s+procedures?)\b",
+                        section.section_name, re.I):
                 if section.text:
-                    methods_texts.append(section.text)
-        return " \n\n".join(methods_texts).strip()
+                    methods_texts.append(section.text.strip())
+
+        # If methods were found, return them
+        if methods_texts:
+            return "\n\n".join(methods_texts)
+
+        # Step 2: Fallback using keyword-based heuristic
+        method_keywords = [
+            # General
+            "animal experiment", "animal study", "in vivo", "preclinical study", 
+            "animal model", "ethics statement", "IACUC", "animal protocol",
+
+            # Species
+            "mouse", "mice", "rat", "zebrafish", "drosophila", "fruit fly", 
+            "xenopus", "c. elegans",
+
+            # Experimental techniques / procedures
+            "knockout", "transgenic", "gene editing", "CRISPR", "RNAi", 
+            "embryo injection", "tissue collection", "organ collection", 
+            "histology", "immunohistochemistry", "western blot", 
+            "behavioral assay", "pharmacological treatment",
+
+            # Administration / handling
+            "intraperitoneal", "intravenous", "oral gavage", 
+            "animal care", "housing conditions", "sacrifice", "euthanasia"
+        ]
+
+        fallback_methods = []
+        for section in sections:
+            if any(kw.lower() in section.section_name.lower() or kw.lower() in section.text.lower()
+                for kw in method_keywords):
+                fallback_methods.append(section.text.strip())
+
+        return "\n\n".join(fallback_methods)
 
     def extract_ethics_text(self, sections: List[SectionText]) -> str:
         ethics_texts = []
@@ -331,7 +414,6 @@ class PaperFetcher:
     # --- Title Similarity Helper ---
     def _is_similar(self, a: str, b: str, threshold: float = 0.8) -> bool:
         ratio = SequenceMatcher(None, a.lower(), b.lower()).ratio()
-        self.logger.info(f"Comparing titles. Similarity score: {ratio:.2f} (Threshold: {threshold})")
         return ratio >= threshold
 
     # --- UBN Scraper and Processor Methods ---
@@ -354,17 +436,40 @@ class PaperFetcher:
         except Exception:
             raise Exception("Could not find any search result on the UBN page.")
 
-        if target_title:
-            self.logger.info(f"Target title: '{target_title}'")
-            self.logger.info(f"UBN found:    '{ubn_title}'")
-            if not self._is_similar(ubn_title, target_title):
-                raise Exception(f"Title mismatch on UBN (score < 80%). Aborting download.")
-            self.logger.info("Title match successful.")
+        if target_title and self._is_similar(ubn_title, target_title):
+            pdf_link_element = WebDriverWait(driver, 30).until(
+                EC.presence_of_element_located((By.CLASS_NAME, "image-link"))
+            )
+            pdf_url = pdf_link_element.get_attribute("href")
 
-        pdf_link_element = WebDriverWait(driver, 30).until(
-            EC.presence_of_element_located((By.CLASS_NAME, "image-link"))
-        )
-        pdf_url = pdf_link_element.get_attribute("href")
+        elif target_title and not self._is_similar(ubn_title, target_title):
+            self.logger.info("Titles do not match. Looking for other titles...")
+            title_elements = driver.find_elements(By.CSS_SELECTOR, 
+                "#aspect_discovery_SimpleSearch_div_search-results div.ds-artifact-item div.artifact-description a h4"
+            )
+            
+            for i, t in enumerate(title_elements):
+                if self._is_similar(t.text, target_title):
+                    break
+                    
+            # Get all artifact items
+            artifact_items = driver.find_elements(By.CSS_SELECTOR, 
+                "#aspect_discovery_SimpleSearch_div_search-results div.ds-artifact-item"
+            )
+            
+            # Select the target item using the index
+            target_item = artifact_items[i]  
+            
+            # Locate the <a> with class 'image-link' inside the thumbnail div
+            link_element = target_item.find_element(By.CSS_SELECTOR, "div.col-sm-1.hidden-xs div.thumbnail.artifact-preview a.image-link")
+            
+            # Get the href
+            pdf_url = link_element.get_attribute("href")
+
+        # Check link validity
+        if not 'pdf' in pdf_url.lower():
+            self.logger.error(f"Invalid PDF URL: {pdf_url}")
+            return None
         
         self.logger.info(f"Found matching PDF at UBN: {pdf_url}")
         pdf_content = self._download_pdf_with_retries(pdf_url)
@@ -418,3 +523,59 @@ class PaperFetcher:
                 sections.append(SectionText(section_name, text, section_type))
         except Exception as e: self.logger.error(f"TEI XML parsing failed: {e}")
         return sections
+    
+    def extract_sections_from_elsevier(self, xml_text: str) -> tuple[str, List[SectionText]]:
+        sections: List[SectionText] = []
+        full_text = ""
+
+        try:
+            soup = BeautifulSoup(xml_text, "lxml-xml")
+
+            # Full text
+            full_text_elem = soup.find("ce:doc") or soup.find("xocs:doc")
+            full_text = full_text_elem.get_text(" ", strip=True) if full_text_elem else ""
+
+            # Parse main sections in body, front, back
+            for tag_name in ['front', 'body', 'back']:
+                tag = soup.find(tag_name)
+                if tag:
+                    for sec in tag.find_all("ce:section"):
+                        # Section title
+                        title_elem = sec.find("ce:section-title")
+                        title_text = title_elem.get_text(" ", strip=True) if title_elem else f"section_{len(sections)}"
+
+                        # Determine section type based on title
+                        title_lower = title_text.lower()
+                        section_type = "body"
+                        if "method" in title_lower or "material" in title_lower:
+                            section_type = "methods"
+                        elif "result" in title_lower or "finding" in title_lower:
+                            section_type = "results"
+                        elif "discussion" in title_lower or "conclusion" in title_lower:
+                            section_type = "discussion"
+                        elif "introduction" in title_lower or "background" in title_lower:
+                            section_type = "introduction"
+
+                        # Section text
+                        sec_text = sec.get_text(" ", strip=True)
+                        if sec_text:
+                            sections.append(SectionText(
+                                section_name=title_text,
+                                text=sec_text,
+                                section_type=section_type
+                            ))
+
+        except Exception as e:
+            sections = []
+            full_text = ""
+
+        return full_text, sections
+
+
+
+if __name__ == "__main__":
+    fetcher = PaperFetcher()
+    paper = fetcher.fetch_full_paper_text("10.1016/J.DRUDIS.2024.104023", "dd", 'Elsevier BV')
+    
+    methods_text = fetcher.extract_methods_text(paper.sections)
+    print(methods_text)
