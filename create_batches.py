@@ -36,14 +36,27 @@ class BatchCreator:
                 f"batch_{timestamp}_{batch_idx//self.batch_size + 1}.jsonl"
             )
 
-            with open(output_file, "w", encoding="utf-8") as f:
+            missing_file = os.path.join(batch_dir, f"missing_methods_{timestamp}.txt")
+
+            with open(output_file, "w", encoding="utf-8") as f, open(missing_file, "a", encoding="utf-8") as mf:
                 for doi in batch:
-                    full_text = fetcher.fetch_full_paper_text(doi, self.data.loc[self.data['DOI'] == doi, 'Title'].values[0], self.data.loc[self.data['DOI'] == doi, 'Publisher'].values[0])
+                    full_text = fetcher.fetch_full_paper_text(
+                        doi,
+                        self.data.loc[self.data['DOI'] == doi, 'Title'].values[0],
+                        self.data.loc[self.data['DOI'] == doi, 'Publisher'].values[0]
+                    )
                     method_section = fetcher.extract_methods_text(full_text.sections)
+                    ethics_section = fetcher.extract_ethics_text(full_text.sections)
+
+                    # If no method section → log DOI separately
+                    if not method_section or method_section.strip() == "":
+                        mf.write(f"{doi}\n")
+                        continue
+
                     
                     abstract = self.data.loc[self.data['DOI'] == doi, 'Abstract'].values[0]
 
-                    content = f"Abstract: {abstract}\nMethod section: {method_section}"
+                    content = f"Abstract: {abstract}\nMethod section: {method_section}\n {ethics_section}"
 
                     task_obj = {
                         "custom_id": doi,
@@ -100,9 +113,9 @@ class BatchCreator:
 if __name__ == "__main__":
     input_file = "data/output_20250911_152540.xlsx"
     azure_dir = "azure"
-    batch_size = 1200
+    batch_size = 1500
     df = pd.read_excel(input_file)
-
+    
     df = df[(df.BART_MNLI_Score >= 0.7) | (df.Animals_Used == True)]
 
     batch_creator = BatchCreator(df, azure_dir, batch_size)

@@ -7,6 +7,7 @@ from typing import Optional, Dict, List
 from dataclasses import dataclass
 from io import BytesIO
 from difflib import SequenceMatcher
+import subprocess
 
 # --- Dependencies ---
 from bs4 import BeautifulSoup
@@ -182,14 +183,18 @@ class PaperFetcher:
                 self.logger.warning(f"Failed to fetch XML from Elsevier for DOI {doi}.")
 
 
-
-        # Step 4: Fall back to UBN/GROBID
+        # Step 4: Fall back to UBN/OA
         self.logger.warning(f"Could not find PMCID or PMID for {doi}. Falling back to UBN/GROBID.")
         try:
             # Pass the title from your dataset directly to the validation method
-            pdf_bytes_io = self._get_ubn_pdf_with_validation(doi, target_title=title)
-            if not pdf_bytes_io:
-                raise Exception("Failed to download PDF from UBN.")
+            try:
+                pdf_bytes_io = self._get_ubn_pdf_with_validation(doi, target_title=title)
+            except Exception as e:
+                pdf_bytes_io = self._get_open_acces_pdf(doi)
+                if pdf_bytes_io:
+                    self.logger.info(f"Successfully downloaded PDF from Open Access for DOI {doi}.")
+                else:
+                    raise Exception("Failed to download PDF.")
 
             tei_xml = self._send_pdf_to_grobid(pdf_bytes_io)
             if not tei_xml:
@@ -206,8 +211,7 @@ class PaperFetcher:
                 sections=sections, success=True
             )
         except Exception as e:
-            error_message = f"All methods failed for {doi}: {e}"
-            self.logger.error(error_message, exc_info=False)
+            self.logger.error(f"Failed to fetch ubn paper text for {doi}: {e}", exc_info=False)
             return FullPaperText(
                 doi=doi, pmcid=None, source='None', full_text="", sections=[],
                 success=False, error_message=str(e)
@@ -264,11 +268,21 @@ class PaperFetcher:
 
     def extract_ethics_text(self, sections: List[SectionText]) -> str:
         ethics_texts = []
+
+        # Regex pattern for ethics/committee/animal statements
+        pattern = re.compile(
+            r"(ethical|ethics|institutional\s+review\s+board(\s+(statement|approval))?|ethics\s+committee|animal\s*(care|use|experiment|study))",
+            re.I
+        )
+
         for section in sections:
-            if re.search(r"\b(ethical\s+approval|animal\s+care|animal\s+use|animal\s+experiment|animal\s+study)\b", section.section_name, re.I):
-                if section.text:
-                    ethics_texts.append(section.text)
+            if (section.section_name and pattern.search(section.section_name)) \
+            or (section.text and pattern.search(section.text)):
+                ethics_texts.append(section.text)
+
         return " \n\n".join(ethics_texts).strip()
+
+
 
     # --- Internal Methods for PMC  ---
     def _http_get(self, url, params, expect_json=False):
@@ -419,6 +433,9 @@ class PaperFetcher:
     # --- UBN Scraper and Processor Methods ---
     def _get_ubn_pdf_with_validation(self, doi: str, target_title: Optional[str] = None) -> Optional[BytesIO]:
         """Searches UBN, validates title against the provided target, and returns PDF."""
+
+        pdf_url = None
+
         if not target_title:
             self.logger.warning("No target title provided. Proceeding with UBN download without validation.")
 
@@ -451,20 +468,38 @@ class PaperFetcher:
             for i, t in enumerate(title_elements):
                 if self._is_similar(t.text, target_title):
                     break
-                    
-            # Get all artifact items
-            artifact_items = driver.find_elements(By.CSS_SELECTOR, 
-                "#aspect_discovery_SimpleSearch_div_search-results div.ds-artifact-item"
-            )
             
-            # Select the target item using the index
-            target_item = artifact_items[i]  
+            if self._is_similar(t.text, target_title):
+    
+                # Get all artifact items
+                artifact_items = driver.find_elements(By.CSS_SELECTOR, 
+                    "#aspect_discovery_SimpleSearch_div_search-results div.ds-artifact-item"
+                )
+                
+                # Select the target item using the index
+                target_item = artifact_items[i]  
+                
+                # Locate the <a> with class 'image-link' inside the thumbnail div
+                link_element = target_item.find_element(By.CSS_SELECTOR, "div.col-sm-1.hidden-xs div.thumbnail.artifact-preview a.image-link")
+                
+                # Get the href
+                pdf_url = link_element.get_attribute("href")
+
+        if not pdf_url:
+            search_input = driver.find_element(By.ID, 'aspect_discovery_SimpleSearch_field_filter_1')
+            search_input.clear()
+            search_input.send_keys(target_title)  
+            search_input.submit() 
             
-            # Locate the <a> with class 'image-link' inside the thumbnail div
-            link_element = target_item.find_element(By.CSS_SELECTOR, "div.col-sm-1.hidden-xs div.thumbnail.artifact-preview a.image-link")
-            
-            # Get the href
-            pdf_url = link_element.get_attribute("href")
+            try:
+                search_result_item = WebDriverWait(driver, self.selenium_wait_time).until(EC.presence_of_element_located((By.CSS_SELECTOR, "div.artifact-description")))
+                ubn_title = search_result_item.find_element(By.TAG_NAME, "h4").text.strip()
+            except Exception:
+                raise Exception("Could not find any search result on the UBN page.")
+
+            if self._is_similar(ubn_title, target_title):
+                pdf_url = driver.find_element(By.CLASS_NAME, 'image-link').get_attribute("href")
+
 
         # Check link validity
         if not 'pdf' in pdf_url.lower():
@@ -474,22 +509,71 @@ class PaperFetcher:
         self.logger.info(f"Found matching PDF at UBN: {pdf_url}")
         pdf_content = self._download_pdf_with_retries(pdf_url)
         return BytesIO(pdf_content) if pdf_content else None
-        
+
+    def _get_open_acces_pdf(self, doi: str) -> Optional[BytesIO]:
+        url = f"https://api.openalex.org/works/https://doi.org/{doi}"
+        data = requests.get(url).json()
+        link = data.get('open_access').get('oa_url')
+        if not link:
+            return None
+        else:
+            pdf_content = self._download_pdf_with_retries(link)
+            return BytesIO(pdf_content) if pdf_content else None
+
+
     def _download_pdf_with_retries(self, url: str) -> Optional[bytes]:
         for attempt in range(1, self.download_retries + 1):
             try:
                 response = requests.get(url, headers=self.scraper_headers, timeout=20)
+
+                # Immediately shutdown on 403
+                if response.status_code == 403:
+                    self.logger.error(f"403 Forbidden encountered for {url}. Shutting down.")
+                    return None
+
                 response.raise_for_status()
                 return response.content
+
             except requests.RequestException as e:
                 wait = self.download_backoff ** attempt
                 self.logger.warning(f"PDF download attempt {attempt} failed: {e}. Retrying in {wait}s...")
                 time.sleep(wait)
+
         self.logger.error(f"All {self.download_retries} download attempts failed for {url}")
         return None
 
+    def _is_grobid_running(self) -> bool:
+        try:
+            resp = requests.get("http://localhost:8070/api/isalive", timeout=5)
+            return resp.status_code == 200
+        except requests.RequestException:
+            return False
+    
+
+    def _start_grobid_docker(self):
+        self.logger.info("Starting GROBID Docker container...")
+        # Run in detached mode
+        subprocess.Popen([
+            "docker", "run", "--rm", "--init", "-p", "8070:8070", "grobid/grobid:0.8.2-full"
+        ])
+        
+        # Wait until GROBID is ready
+        for _ in range(30):  # ~30 seconds max
+            if self._is_grobid_running():
+                self.logger.info("GROBID is up and running!")
+                return
+            time.sleep(1)
+        
+        raise RuntimeError("GROBID failed to start within 30 seconds.")
+
+
     def _send_pdf_to_grobid(self, pdf_file: BytesIO) -> Optional[str]:
         url = "http://localhost:8070/api/processFulltextDocument"
+
+        # Ensure GROBID is running
+        if not self._is_grobid_running():
+            self._start_grobid_docker()
+
         self.logger.info("Sending PDF to GROBID for processing...")
         try:
             pdf_file.seek(0)
@@ -575,7 +659,8 @@ class PaperFetcher:
 
 if __name__ == "__main__":
     fetcher = PaperFetcher()
-    paper = fetcher.fetch_full_paper_text("10.1016/J.DRUDIS.2024.104023", "dd", 'Elsevier BV')
-    
+    paper = fetcher.fetch_full_paper_text("10.1242/JCS.218487", "Sulfur in lucinid bivalves inhibits intake rates of a molluscivore shorebird", '')
     methods_text = fetcher.extract_methods_text(paper.sections)
     print(methods_text)
+    #10.1890/14-0082.1
+    #10.1016/J.BEPROC.2015.08.013
