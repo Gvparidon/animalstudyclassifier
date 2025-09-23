@@ -162,25 +162,28 @@ class PaperFetcher:
         
         # Step 3: Try elsevier
         if publisher == "Elsevier BV":
-            self.logger.info(f"Attempting to fetch DOI {doi} from Elsevier...")
-            url = f'https://api.elsevier.com/content/article/doi/{doi}'
-            headers = {'X-ELS-APIKey': ELSEVIER_KEY, 'Accept': 'application/xml'}
+            try:
+                self.logger.info(f"Attempting to fetch DOI {doi} from Elsevier...")
+                url = f'https://api.elsevier.com/content/article/doi/{doi}'
+                headers = {'X-ELS-APIKey': ELSEVIER_KEY, 'Accept': 'application/xml'}
 
-            response = requests.get(url, headers=headers)
+                response = requests.get(url, headers=headers)
 
-            xml_text = response.text
+                xml_text = response.text
 
-            if xml_text:
-                full_text, sections = self.extract_sections_from_elsevier(xml_text)
-                if sections:
-                    return FullPaperText(
-                        doi=doi, pmcid=None, source='Elsevier', full_text=full_text,
-                        sections=sections, success=True
-                    )
+                if xml_text:
+                    full_text, sections = self.extract_sections_from_elsevier(xml_text)
+                    if sections:
+                        return FullPaperText(
+                            doi=doi, pmcid=None, source='Elsevier', full_text=full_text,
+                            sections=sections, success=True
+                        )
+                    else:
+                        self.logger.warning(f"Failed to extract sections from Elsevier XML for DOI {doi}.")
                 else:
-                    self.logger.warning(f"Failed to extract sections from Elsevier XML for DOI {doi}.")
-            else:
-                self.logger.warning(f"Failed to fetch XML from Elsevier for DOI {doi}.")
+                    self.logger.warning(f"Failed to fetch XML from Elsevier for DOI {doi}.")
+            except Exception as e:
+                self.logger.warning(f"Failed to fetch XML from Elsevier for DOI {doi}: {e}")
 
 
         # Step 4: Fall back to UBN/OA
@@ -659,7 +662,7 @@ class PaperFetcher:
 
 if __name__ == "__main__":
     fetcher = PaperFetcher()
-    paper = fetcher.fetch_full_paper_text("10.1242/JCS.218487", "Sulfur in lucinid bivalves inhibits intake rates of a molluscivore shorebird", '')
+    paper = fetcher.fetch_full_paper_text("10.1016/J.TOX.2022.153129", "Sulfur in lucinid bivalves inhibits intake rates of a molluscivore shorebird", 'Elsevier BV')
     methods_text = fetcher.extract_methods_text(paper.sections)
     print(methods_text)
     #10.1890/14-0082.1

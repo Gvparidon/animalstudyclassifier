@@ -45,8 +45,12 @@ class BatchCreator:
                         self.data.loc[self.data['DOI'] == doi, 'Title'].values[0],
                         self.data.loc[self.data['DOI'] == doi, 'Publisher'].values[0]
                     )
-                    method_section = fetcher.extract_methods_text(full_text.sections)
-                    ethics_section = fetcher.extract_ethics_text(full_text.sections)
+                    try:
+                        method_section = fetcher.extract_methods_text(full_text.sections)
+                        ethics_section = fetcher.extract_ethics_text(full_text.sections)
+                    except:
+                        method_section = ""
+                        ethics_section = ""
 
                     # If no method section → log DOI separately
                     if not method_section or method_section.strip() == "":
@@ -116,7 +120,10 @@ if __name__ == "__main__":
     batch_size = 1500
     df = pd.read_excel(input_file)
     
+    df = df[~df.duplicated('DOI')]
+    print(len(df))
     df = df[(df.BART_MNLI_Score >= 0.7) | (df.Animals_Used == True)]
+    print(len(df))
 
-    batch_creator = BatchCreator(df, azure_dir, batch_size)
-    batch_creator.create_batches()
+    #batch_creator = BatchCreator(df, azure_dir, batch_size)
+    #batch_creator.create_batches()
