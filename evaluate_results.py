@@ -157,12 +157,17 @@ def modify_for_tableau(data: pd.DataFrame) -> pd.DataFrame:
     mapping_dict = species_mapping.set_index("Species")["Standardized Name"].to_dict()
     data["Species"] = data["Species"].map(mapping_dict).fillna(data["Species"])
 
-    data.loc[data["Evaluation"] != True, "Species"] = pd.NA
+    data.loc[data["In_Vivo_GPT"] != True, "Species"] = pd.NA
+
+    data.loc[data['Species'] == 'No animal', ['In_Vivo_GPT', 'Evaluation']] = False
+
+    mask = (data['In_Vivo_GPT'] == False) & (data['Evaluation'] == False)
+    data.loc[mask, 'Species'] = pd.NA
 
     ## Left join publicaties
     publicaties = pd.read_excel('data/publicaties.xlsx')
 
-        # Perform left join on DOI
+    # Perform left join on DOI
     data = data.merge(
         publicaties[["DOI nummer", "Faculteit", "Onderzoeksinstituut", "Jaar uitgave"]],
         how="left",

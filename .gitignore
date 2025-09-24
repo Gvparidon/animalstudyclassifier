@@ -166,3 +166,7 @@ tmp/
 
 # Analysis scripts
 results_analyzer.py
+
+# Notebooks
+.ipynb
+.ipynb_checkpoints

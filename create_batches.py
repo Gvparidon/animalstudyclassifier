@@ -120,10 +120,7 @@ if __name__ == "__main__":
     batch_size = 1500
     df = pd.read_excel(input_file)
     
-    df = df[~df.duplicated('DOI')]
-    print(len(df))
     df = df[(df.BART_MNLI_Score >= 0.7) | (df.Animals_Used == True)]
-    print(len(df))
 
     #batch_creator = BatchCreator(df, azure_dir, batch_size)
     #batch_creator.create_batches()
